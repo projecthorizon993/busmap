@@ -1,4 +1,4 @@
-name: Build APK
+name: Build Android APK
 
 on:
   push:
@@ -12,17 +12,21 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-apk:
     name: Build Android APK
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
-      VITE_DIGITRANSIT_API_KEY: ci-fixture-key
-      VITE_TRANSIT_PROVIDER: hsl
+      VITE_TRANSIT_PROVIDER: vietnam
       VITE_VIETNAM_API_BASE: http://timbus.vn
+      VITE_VINBUS_API_BASE: https://vbservice-api.vinbus.vn
+      VITE_VINBUS_TILE_BASE: https://vbcore-maptile-web.vinbus.vn
+      VITE_VINBUS_DECRYPT_KEY: ${{ secrets.VINBUS_DECRYPT_KEY }}
+      VITE_VINBUS_DEFAULT_REGION: hcm
+      VITE_VINBUS_TIMEOUT_MS: 15000
 
     steps:
       - name: Check out repository
@@ -36,6 +40,9 @@ jobs:
 
       - name: Install dependencies
         run: npm install
+
+      - name: Install Capacitor Geolocation
+        run: npm install @capacitor/geolocation
 
       - name: Lint and typecheck
         run: |
