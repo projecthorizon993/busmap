@@ -26,7 +26,13 @@ import {
   watchUserLocation,
 } from '@/stores';
 import { findMatchingVehicle, haversineDistance, mqttService, resolveRouteColor, useRoutePatterns, useStops } from '@/lib';
-import type { Route, TrackedVehicle, BoundingBox, SubscribedRoute, Stop, StopDeparture } from '@/types';
+import { EtaNotification } from '@/components/EtaNotification';
+import { useEtaProximityMonitor } from '@/components/useEtaProximityMonitor';
+import { getProvider } from '@/lib/provider';
+import { VinBusHttpClient } from '@/lib/vinbus/client';
+import { StationService } from '@/lib/vinbus/stationService';
+import type { RegionCode } from '@/lib/vinbus/models';
+import type { Route, TrackedVehicle, BoundingBox, SubscribedRoute, Stop, StopDeparture, StopRoute } from '@/types';
 import { prefixRouteId, stripRouteIdPrefix } from '@/lib/routeId';
 import {
   SHEET_MIN_HEIGHT,
@@ -183,6 +189,14 @@ const App = () => {
   const stopListScrollRef = useRef(0);
   const [sheetHistory, setSheetHistory] = useState<SheetHistoryEntry[]>([]);
 
+  // ETA proximity notification: bus arriving within ~100s of a nearby stop
+  const [etaNotification, setEtaNotification] = useState<{
+    vehicleId: string;
+    routeShortName: string;
+    stopName: string;
+    etaSeconds: number;
+  } | null>(null);
+
   // Motion-value-driven button position (no React re-render lag)
   const fallbackHeight = useMotionValue(sheetHeight);
   const [sheetHeightMV, setSheetHeightMV] = useState<MotionValue<number>>(fallbackHeight);
@@ -233,6 +247,12 @@ const App = () => {
     return () => clearTimeout(radiusTimeoutRef.current);
   }, [nearbyRadius]);
   const theme = useSettingsStore((state) => state.theme);
+  const stationService = useMemo(
+    () => new StationService(
+      new VinBusHttpClient({ decryptKey: import.meta.env.VITE_VINBUS_DECRYPT_KEY ?? '' }),
+    ),
+    [],
+  );
   const subscribedRoutes = useSubscriptionStore((state) => state.subscribedRoutes);
   const vehiclesMap = useVehicleStore((state) => state.vehicles);
   const vehicles = useMemo(() => Array.from(vehiclesMap.values()), [vehiclesMap]);
@@ -444,6 +464,84 @@ const App = () => {
     // connected yet, it will store the config and apply it when connected
     mqttService.configureNearby(bounds, stableCoords, debouncedRadius);
   }, [showNearby, stableCoords, debouncedRadius, markNearbyVehiclesForExit, clearNearbyVehicles]);
+
+  // Auto-zoom to user's current GNSS location on mount (once, before any interaction)
+  const userLocationZoomedRef = useRef(false);
+  useEffect(() => {
+    if (userLocationZoomedRef.current || !userCoords || mapCameraState.hasMovedFromRoute || mapCameraState.hasMovedFromStop) return;
+
+    const { flyToLocation } = useLocationStore.getState();
+    flyToLocation(userCoords.lat, userCoords.lng, 15);
+    userLocationZoomedRef.current = true;
+  }, [userCoords, mapCameraState]);
+
+  // VinBus station import: fetch nearby stations from VinBus API when using the vietnam provider
+  const [vinbusStations, setVinbusStations] = useState<Array<{
+    gtfsId: string; name: string; lat: number; lon: number;
+    vehicleMode: 'bus'; routes: StopRoute[]; code: string;
+  }>>([]);
+  const provider = getProvider();
+
+  useEffect(() => {
+    // Only import stations when the vietnam (VinBus) provider is active
+    if (provider.id !== 'vietnam' || !stableCoords) return;
+
+    const fetchStations = async () => {
+      try {
+        const stations = await stationService.getNearbyStations(
+          stableCoords.lat, stableCoords.lng, 1500,
+          (import.meta.env.VITE_VINBUS_DEFAULT_REGION ?? 'hcm') as RegionCode,
+        );
+        setVinbusStations(stations.map((s) => ({
+          gtfsId: String(s.stationId),
+          name: s.stationName,
+          lat: s.lat,
+          lon: s.lng,
+          vehicleMode: 'bus' as const,
+          routes: [],
+          code: String(s.stationId),
+        })));
+      } catch (err) {
+        console.warn('VinBus station import failed:', err);
+      }
+    };
+
+    void fetchStations();
+  }, [provider.id, stableCoords, stationService]);
+
+  // ETA proximity monitoring: notify when a bus is within ~100s of a nearby stop
+  const handleEtaNotify = useCallback(
+    (notification: {
+      vehicleId: string; routeShortName: string; stopName: string; etaSeconds: number;
+    }) => {
+      setEtaNotification(notification);
+
+      // Vibrate the device (two short pulses) if supported
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        navigator.vibrate([100, 50, 100]);
+      }
+    },
+    [],
+  );
+
+  const allStopsForEta = useMemo(() => {
+    const stops: Array<{ gtfsId: string; name: string; lat: number; lon: number }> = [];
+    for (const s of stopsForSearch) {
+      stops.push({ gtfsId: s.gtfsId, name: s.name, lat: s.lat, lon: s.lon });
+    }
+    for (const s of vinbusStations) {
+      stops.push({ gtfsId: s.gtfsId, name: s.name, lat: s.lat, lon: s.lon });
+    }
+    return stops;
+  }, [stopsForSearch, vinbusStations]);
+
+  useEtaProximityMonitor(
+    vehicles,
+    allStopsForEta,
+    userCoords?.lat ?? null,
+    userCoords?.lng ?? null,
+    handleEtaNotify,
+  );
 
   // Handle route selection - uses getState() to avoid dependency on subscribedRoutes
   const handleSelectRoute = useCallback(
@@ -965,6 +1063,16 @@ const App = () => {
 
   return (
     <div className="h-full w-full relative bg-gray-100 dark:bg-gray-950">
+      {/* ETA proximity notification (bus arriving within ~100s of a nearby stop) */}
+      {etaNotification && (
+        <EtaNotification
+          routeShortName={etaNotification.routeShortName}
+          stopName={etaNotification.stopName}
+          etaSeconds={etaNotification.etaSeconds}
+          onDismiss={() => setEtaNotification(null)}
+        />
+      )}
+
       {/* Map */}
       <BusMap
         patterns={patterns}
