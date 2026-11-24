@@ -12,6 +12,9 @@ import { TOP_BAR_HEIGHT, getVehicleTiming, getMarkerSizeScale } from '@/constant
 
 import { MAP_STYLES } from '@/types';
 
+import { BusETAEstimate } from '@/lib/vinbus/busPositionEstimator';
+import { BusETAEstimate as BusETAEstimateComponent } from '@/components/BusETAEstimate';
+
 // Create a composite vehicle marker image: heading arrow + colored circle.
 // The arrow and circle are baked into a single icon so `symbol-sort-key`
 // controls the draw order of both as a unit, giving correct z-ordering
@@ -150,6 +153,7 @@ interface BusMapProps {
   nearbyRouteIds?: string[];
   onCameraActionsChange?: (actions: BusMapCameraActions | null) => void;
   onCameraStateChange?: (state: BusMapCameraState) => void;
+  estimatedBuses?: BusETAEstimate[];
 }
 
 const routeLineStyle: LineLayerSpecification = {
@@ -332,7 +336,7 @@ const createCirclePolygon = (lng: number, lat: number, radiusMeters: number, poi
   };
 };
 
-const BusMapComponent = ({ patterns, onVehicleClick, nearbyRadius, selectedVehicleId, onVehicleSelect, selectedRouteId, activatedRoute, onRouteSelect, bottomPadding = 200, nearbyStops, onStopClick, onStopDeselect, onRouteActivate, nearbyRouteIds, onCameraActionsChange, onCameraStateChange }: BusMapProps) => {
+const BusMapComponent = ({ patterns, onVehicleClick, nearbyRadius, selectedVehicleId, onVehicleSelect, selectedRouteId, activatedRoute, onRouteSelect, bottomPadding = 200, nearbyStops, onStopClick, onStopDeselect, onRouteActivate, nearbyRouteIds, onCameraActionsChange, onCameraStateChange, estimatedBuses }: BusMapProps) => {
   const mapRef = useRef<MapRef>(null);
   const { viewport, setViewport, pendingFlyTo, consumePendingFlyTo } = useLocationStore();
   const userLocation = useLocationStore((state) => state.userLocation);
@@ -1540,6 +1544,13 @@ const BusMapComponent = ({ patterns, onVehicleClick, nearbyRadius, selectedVehic
         <Layer {...vehicleMarkerStyle} />
       </Source>
 
+      {/* ETA-estimated bus markers (VinBus: no live GPS, position estimated from ETA/distance) */}
+      {estimatedBuses?.map((est) => (
+        <BusETAEstimateComponent
+          key={est.busId}
+          estimate={est}
+        />
+      ))}
 
       <AttributionControl position="bottom-right" compact={true} />
     </Map>

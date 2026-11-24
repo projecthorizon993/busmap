@@ -32,6 +32,7 @@ import { getProvider } from '@/lib/provider';
 import { VinBusHttpClient } from '@/lib/vinbus/client';
 import { StationService } from '@/lib/vinbus/stationService';
 import type { RegionCode } from '@/lib/vinbus/models';
+import { parseBusETAList, type BusETAEstimate } from '@/lib/vinbus/busPositionEstimator';
 import type { Route, TrackedVehicle, BoundingBox, SubscribedRoute, Stop, StopDeparture, StopRoute } from '@/types';
 import { prefixRouteId, stripRouteIdPrefix } from '@/lib/routeId';
 import {
@@ -508,6 +509,51 @@ const App = () => {
 
     void fetchStations();
   }, [provider.id, stableCoords, stationService]);
+
+  // Estimated buses on map: poll estimate_bus_to_station for each nearby station
+  const [estimatedBuses, setEstimatedBuses] = useState<BusETAEstimate[]>([]);
+  const etaPollRef = useRef<ReturnType<typeof setInterval>>(null);
+
+  useEffect(() => {
+    // Only poll for estimated buses when using vietnam provider and we have stations
+    if (provider.id !== 'vietnam' || vinbusStations.length === 0 || !stableCoords) {
+      if (etaPollRef.current) {
+        clearInterval(etaPollRef.current);
+        etaPollRef.current = null;
+      }
+      return;
+    }
+
+    const regionCode = (import.meta.env.VITE_VINBUS_DEFAULT_REGION ?? 'hcm') as RegionCode;
+
+    const fetchEstimates = async () => {
+      const allEstimates: BusETAEstimate[] = [];
+      for (const station of vinbusStations) {
+        try {
+          const raw = await stationService.getEstimatedArrivals(
+            station.gtfsId, regionCode, 1, 0,
+          );
+          if (!Array.isArray(raw)) continue;
+            const estimates = parseBusETAList(
+            raw,
+            [], // No route geometry available from estimate_bus_to_station alone; position will be at stop
+            station.lat, station.lon, station.name,
+          );
+          allEstimates.push(...estimates);
+        } catch {
+          // Skip individual station failures
+        }
+      }
+      setEstimatedBuses(allEstimates);
+    };
+
+    fetchEstimates();
+    etaPollRef.current = setInterval(fetchEstimates, 10_000);
+    return () => {
+      if (etaPollRef.current) clearInterval(etaPollRef.current);
+      etaPollRef.current = null;
+    };
+  }, [provider.id, stableCoords, vinbusStations, stationService]);
 
   // ETA proximity monitoring: notify when a bus is within ~100s of a nearby stop
   const handleEtaNotify = useCallback(
@@ -1090,6 +1136,7 @@ const App = () => {
         nearbyRouteIds={nearbyRouteIds}
         onCameraActionsChange={setMapCameraActions}
         onCameraStateChange={setMapCameraState}
+        estimatedBuses={estimatedBuses}
       />
 
       {/* Status bar with search */}
