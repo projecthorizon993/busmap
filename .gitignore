@@ -15,7 +15,8 @@ android/gradle/
 !android/gradle/wrapper/
 !android/gradle/wrapper/gradle-wrapper.jar
 !android/gradle/wrapper/gradle-wrapper.properties
-android/capacitor-cordova-android-plugins/
+android/capacitor-cordova-android-plugins
+!android/capacitor-cordova-android-plugins/cordova.variables.gradle/
 android/app/src/main/assets/capacitor-generated-plugins.xml
 android/app/src/main/res/values/capacitor-generated.xml
 !android/app/src/main/AndroidManifest.xml
