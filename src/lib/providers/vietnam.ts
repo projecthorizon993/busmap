@@ -86,8 +86,8 @@ const parseGeoString = (value: unknown): { lat: number; lon: number } | null => 
 
   if (typeof value === 'object') {
     const obj = value as Record<string, unknown>;
-    const lat = Number(obj.lat ?? obj.latitude ?? obj.y ?? 0);
-    const lon = Number(obj.lon ?? obj.longitude ?? obj.lng ?? obj.x ?? 0);
+    const lat = Number(obj.lat ?? obj.Lat ?? obj.latitude ?? obj.y ?? 0);
+    const lon = Number(obj.lon ?? obj.lng ?? obj.Lon ?? obj.Lng ?? obj.longitude ?? obj.x ?? 0);
     if (Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) {
       return { lat, lon };
     }
