@@ -12,6 +12,9 @@ test-results/
 android/app/build/
 android/.gradle/
 android/gradle/
+!android/gradle/wrapper/
+!android/gradle/wrapper/gradle-wrapper.jar
+!android/gradle/wrapper/gradle-wrapper.properties
 android/capacitor-cordova-android-plugins/
 android/app/src/main/assets/capacitor-generated-plugins.xml
 android/app/src/main/res/values/capacitor-generated.xml
