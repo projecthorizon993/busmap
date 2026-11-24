@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">busmap</string>
+    <string name="title_activity_main">busmap</string>
+    <string name="package_name">com.fruitiex.busmap</string>
+    <string name="custom_url_scheme">com.fruitiex.busmap</string>
+</resources>

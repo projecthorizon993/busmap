@@ -7,3 +7,18 @@ node_modules
 TODO.md
 playwright-report/
 test-results/
+
+# Capacitor Android build outputs (keep android/ project source, ignore build artifacts)
+android/app/build/
+android/.gradle/
+android/gradle/
+android/capacitor-cordova-android-plugins/
+android/app/src/main/assets/capacitor-generated-plugins.xml
+android/app/src/main/res/values/capacitor-generated.xml
+!android/app/src/main/AndroidManifest.xml
+!android/app/src/main/java/
+!android/app/src/main/res/
+!android/gradle.properties
+!android/build.gradle
+!android/settings.gradle
+!android/app/build.gradle
