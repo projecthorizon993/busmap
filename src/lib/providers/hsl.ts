@@ -6,6 +6,7 @@ import {
   ParsedVehicle, StopTimetableResult, TransitProvider,
   routeIdWithoutPrefix,
 } from '@/lib/provider';
+import type { LiveVehicleAtStation } from '@/lib/provider';
 
 const API_ENDPOINT = 'https://api.digitransit.fi/routing/v2/hsl/gtfs/v1';
 
@@ -732,6 +733,10 @@ export const hslProvider: TransitProvider = {
       longName: r.longName,
       mode: normalizeMode(r.mode, r.gtfsId),
     }));
+  },
+  fetchLiveVehiclesAtStation: async (): Promise<LiveVehicleAtStation[]> => {
+    // HSL exposes live positions via MQTT, not a per-station REST endpoint.
+    return [];
   },
   parseVehicleMessage: parseHfpMessage,
 };

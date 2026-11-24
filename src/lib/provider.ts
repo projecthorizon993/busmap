@@ -31,6 +31,13 @@ export interface StopTimetableResult {
   directions: Record<string, number[]>;
 }
 
+export interface LiveVehicleAtStation {
+  vehicleId: string;
+  routeCode: string;
+  distanceMeters: number;
+  etaSeconds: number;
+}
+
 export interface TransitProvider {
   id: string;
   label: string;
@@ -54,6 +61,10 @@ export interface TransitProvider {
     startTime: string,
   ): Promise<VehicleTrip | null>;
   fetchStopRoutes(stopId: string): Promise<StopRoute[]>;
+  fetchLiveVehiclesAtStation(
+    stationId: string,
+    fleetOver: string[],
+  ): Promise<LiveVehicleAtStation[]>;
   parseVehicleMessage(topic: string, payload: Buffer): ParsedVehicle | null;
 }
 

@@ -411,7 +411,7 @@ export const vietnamProvider: TransitProvider = {
     // timbus.vn static API does not expose live vehicle trips.
     return null;
   },
-  fetchStopRoutes: async (stopId: string): Promise<StopRoute[]> => {
+  fetchStopRoutes: async (_stopId: string): Promise<StopRoute[]> => {
     // Stop-to-routes mapping is populated from fleetdetail station data.
     return [];
   },
