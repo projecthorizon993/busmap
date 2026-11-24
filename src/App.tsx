@@ -337,6 +337,7 @@ const App = () => {
   const setIsFollowingUser = useLocationStore((state) => state.setIsFollowingUser);
   const locationPermissionDenied = useLocationStore((state) => state.locationPermissionDenied);
   const isSecureContext = useLocationStore((state) => state.isSecureContext);
+  const detectedRegion = useLocationStore((state) => state.detectedRegion);
 
   // Stops store
   const { selectedStop, selectedStopRouteIds, selectStop, clearSelectedStop } = useStopStore();
@@ -577,9 +578,10 @@ const App = () => {
 
     const fetchStations = async () => {
       try {
+        const regionCode = detectedRegion ?? (import.meta.env.VITE_VINBUS_DEFAULT_REGION ?? 'hcm');
         const stations = await stationService.getNearbyStations(
           stableCoords.lat, stableCoords.lng, 1500,
-          (import.meta.env.VITE_VINBUS_DEFAULT_REGION ?? 'hcm') as RegionCode,
+          regionCode as RegionCode,
         );
         setVinbusStations(stations.map((s) => ({
           gtfsId: String(s.stationId),
@@ -596,7 +598,7 @@ const App = () => {
     };
 
     void fetchStations();
-  }, [provider.id, stableCoords, stationService]);
+  }, [provider.id, stableCoords, stationService, detectedRegion]);
 
   // Estimated buses on map: poll estimate_bus_to_station for each nearby station
   const [estimatedBuses, setEstimatedBuses] = useState<BusETAEstimate[]>([]);

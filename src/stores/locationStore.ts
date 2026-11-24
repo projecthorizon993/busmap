@@ -5,6 +5,34 @@ import { useSettingsStore } from './settingsStore';
 import { SHEET_DEFAULT_HEIGHT, TOP_BAR_HEIGHT, METERS_PER_DEGREE_LAT } from '@/constants';
 
 const LAST_LOCATION_KEY = 'busmap-last-location';
+const LAST_REGION_KEY = 'busmap-last-region';
+
+const loadLastRegion = (): string | null => {
+  try {
+    const stored = localStorage.getItem(LAST_REGION_KEY);
+    if (stored && typeof stored === 'string') return stored;
+  } catch { /* ignore */ }
+  return null;
+};
+
+// VinBus region bounding boxes (west, south, east, north) observed from API
+const VINBUS_REGIONS: Record<string, { code: string; west: number; south: number; east: number; north: number }> = {
+  hcm: { code: 'hcm', west: 106.33, south: 10.32, east: 107.58, north: 11.51 },
+  hn: { code: 'hn', west: 105.70, south: 20.93, east: 106.02, north: 21.25 },
+  pq: { code: 'pq', west: 103.807039, south: 9.800522, east: 104.133502, north: 10.464617 },
+  nt: { code: 'nt', west: 109.102382, south: 11.899107, east: 109.233757, north: 12.265010 },
+  qn: { code: 'qn', west: 106.43, south: 20.75, east: 108.10, north: 21.67 },
+};
+
+/** Detect which VinBus region contains the given coordinates. */
+export function detectRegionFromCoords(lat: number, lng: number): string | null {
+  for (const region of Object.values(VINBUS_REGIONS)) {
+    if (lng >= region.west && lng <= region.east && lat >= region.south && lat <= region.north) {
+      return region.code;
+    }
+  }
+  return null;
+}
 
 const loadLastLocation = (): { latitude: number; longitude: number } | null => {
   try {
@@ -80,6 +108,10 @@ interface LocationState {
   locationPermissionDenied: boolean;
   setLocationPermissionDenied: (denied: boolean) => void;
   isSecureContext: boolean;
+
+  // Auto-detected region from GPS
+  detectedRegion: string | null;
+  setDetectedRegion: (region: string | null) => void;
 }
 
 const createLocationStore = () => create<LocationState>((set, get) => ({
@@ -90,10 +122,16 @@ const createLocationStore = () => create<LocationState>((set, get) => ({
   viewport: DEFAULT_VIEWPORT,
   bottomPadding: SHEET_DEFAULT_HEIGHT,
   pendingFlyTo: null,
+  detectedRegion: loadLastRegion(),
 
   setUserLocation: (userLocation) => {
     saveLastLocation(userLocation.latitude, userLocation.longitude);
-    set({ userLocation, lastKnownLocation: { latitude: userLocation.latitude, longitude: userLocation.longitude }, locationError: null });
+    // Auto-detect region from GPS coordinates
+    const detected = detectRegionFromCoords(userLocation.latitude, userLocation.longitude);
+    if (detected) {
+      try { localStorage.setItem(LAST_REGION_KEY, detected); } catch { /* ignore */ }
+    }
+    set({ userLocation, lastKnownLocation: { latitude: userLocation.latitude, longitude: userLocation.longitude }, locationError: null, detectedRegion: detected || null });
   },
   setLocationError: (locationError) => set({ locationError, isLocating: false }),
   setIsLocating: (isLocating) => set({ isLocating }),
@@ -173,6 +211,7 @@ const createLocationStore = () => create<LocationState>((set, get) => ({
 
   setIsFollowingUser: (following) => set({ isFollowingUser: following }),
   setLocationPermissionDenied: (denied) => set({ locationPermissionDenied: denied }),
+  setDetectedRegion: (region) => set({ detectedRegion: region }),
   isFollowingUser: false,
   locationPermissionDenied: false,
   isSecureContext: typeof window !== 'undefined' && window.isSecureContext,
