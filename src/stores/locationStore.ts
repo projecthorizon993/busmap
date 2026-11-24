@@ -73,6 +73,13 @@ interface LocationState {
   flyToUserLocation: () => void;
   consumePendingFlyTo: () => void;
   resetViewport: () => void;
+
+  // Follow my location toggle
+  isFollowingUser: boolean;
+  setIsFollowingUser: (following: boolean) => void;
+  locationPermissionDenied: boolean;
+  setLocationPermissionDenied: (denied: boolean) => void;
+  isSecureContext: boolean;
 }
 
 const createLocationStore = () => create<LocationState>((set, get) => ({
@@ -163,6 +170,12 @@ const createLocationStore = () => create<LocationState>((set, get) => ({
 
   consumePendingFlyTo: () => set({ pendingFlyTo: null }),
   resetViewport: () => set({ viewport: DEFAULT_VIEWPORT }),
+
+  setIsFollowingUser: (following) => set({ isFollowingUser: following }),
+  setLocationPermissionDenied: (denied) => set({ locationPermissionDenied: denied }),
+  isFollowingUser: false,
+  locationPermissionDenied: false,
+  isSecureContext: typeof window !== 'undefined' && window.isSecureContext,
 }));
 
 type LocationStore = ReturnType<typeof createLocationStore>;
@@ -205,6 +218,7 @@ const startWatcher = () => {
 
       if (error.code === error.PERMISSION_DENIED) {
         useLocationStore.getState().setLocationError('Location permission denied');
+        useLocationStore.getState().setLocationPermissionDenied(true);
         stopWatchingLocation();
         return;
       }
@@ -279,6 +293,9 @@ export const requestUserLocation = (): Promise<UserLocation> => {
             ? 'Location unavailable'
             : 'Location request timed out';
       useLocationStore.getState().setLocationError(message);
+      if (error.code === error.PERMISSION_DENIED) {
+        useLocationStore.getState().setLocationPermissionDenied(true);
+      }
       reject(new Error(message));
     };
 

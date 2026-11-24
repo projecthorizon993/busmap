@@ -67,6 +67,71 @@ const LocationIcon = () => (
   </svg>
 );
 
+// Follow my location toggle button
+const FollowLocationIcon = () => (
+  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-full h-full">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+    />
+  </svg>
+);
+
+const FollowOffIcon = () => (
+  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-full h-full">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L-4 4m4 4v12"
+    />
+  </svg>
+);
+
+// Wait time display for nearest approaching bus
+interface WaitTimeDisplayProps {
+  etaSeconds: number | null;
+  stopName: string | null;
+  routeShortName: string | null;
+}
+
+const WaitTimeDisplay: React.FC<WaitTimeDisplayProps> = ({
+  etaSeconds, stopName, routeShortName,
+}) => {
+  if (!etaSeconds || etaSeconds <= 0) return null;
+
+  const minutes = Math.floor(etaSeconds / 60);
+  const seconds = etaSeconds % 60;
+  const etaText = minutes > 0
+    ? `${minutes}'${seconds.toString().padStart(2, '0')}"`
+    : `${seconds}"`;
+
+  return (
+    <div className="fixed bottom-24 left-4 right-4 z-40 flex items-center gap-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-3 py-2 shadow-lg">
+      <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center text-blue-700 dark:text-blue-300 font-bold text-xs">
+        🚌
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-semibold text-gray-900 dark:text-white truncate">
+          {routeShortName} → {stopName}
+        </div>
+        <div className="text-xs text-gray-600 dark:text-gray-400">
+          Arriving in {etaText}
+        </div>
+      </div>
+      <div className="w-24 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+        <div
+          className="h-full bg-blue-500 transition-all duration-1000"
+          style={{ width: '100%' }}
+        />
+      </div>
+    </div>
+  );
+};
+
+
 
 
 type SheetTab = 'vehicles' | 'routes' | 'stops';
@@ -268,6 +333,10 @@ const App = () => {
   const { subscribeToRoute, unsubscribeFromRoute } = useSubscriptionStore();
   const flyToUserLocation = useLocationStore((state) => state.flyToUserLocation);
   const setBottomPadding = useLocationStore((state) => state.setBottomPadding);
+  const isFollowingUser = useLocationStore((state) => state.isFollowingUser);
+  const setIsFollowingUser = useLocationStore((state) => state.setIsFollowingUser);
+  const locationPermissionDenied = useLocationStore((state) => state.locationPermissionDenied);
+  const isSecureContext = useLocationStore((state) => state.isSecureContext);
 
   // Stops store
   const { selectedStop, selectedStopRouteIds, selectStop, clearSelectedStop } = useStopStore();
@@ -476,6 +545,25 @@ const App = () => {
     userLocationZoomedRef.current = true;
   }, [userCoords, mapCameraState]);
 
+  // Follow my location: continuously center map on user's moving dot when toggle is on
+  const followUserRef = useRef(false);
+  useEffect(() => {
+    if (!isFollowingUser || !userCoords) return;
+
+    // Only follow if not panned away from route/stop
+    if (mapCameraState.hasMovedFromRoute || mapCameraState.hasMovedFromStop) {
+      setIsFollowingUser(false);
+      followUserRef.current = false;
+      return;
+    }
+
+    followUserRef.current = true;
+
+    const { flyToLocation } = useLocationStore.getState();
+    flyToLocation(userCoords.lat, userCoords.lng, 15);
+  }, [isFollowingUser, userCoords, mapCameraState.hasMovedFromRoute, mapCameraState.hasMovedFromStop, setIsFollowingUser]);
+
+
   // VinBus station import: fetch nearby stations from VinBus API when using the vietnam provider
   const [vinbusStations, setVinbusStations] = useState<Array<{
     gtfsId: string; name: string; lat: number; lon: number;
@@ -554,6 +642,19 @@ const App = () => {
       etaPollRef.current = null;
     };
   }, [provider.id, stableCoords, vinbusStations, stationService]);
+
+  // Compute nearest approaching bus for persistent wait-time display
+  const nearestEstimatedBus = useMemo(() => {
+    if (!estimatedBuses || estimatedBuses.length === 0) return null;
+    const approaching = estimatedBuses.filter((e) => e.etaSeconds > 0 && e.etaSeconds <= 600);
+    if (approaching.length === 0) return null;
+    approaching.sort((a, b) => a.etaSeconds - b.etaSeconds);
+    return {
+      routeShortName: approaching[0].routeNo,
+      stopName: approaching[0].stopName,
+      etaSeconds: approaching[0].etaSeconds,
+    };
+  }, [estimatedBuses]);
 
   // ETA proximity monitoring: notify when a bus is within ~100s of a nearby stop
   const handleEtaNotify = useCallback(
@@ -1119,6 +1220,15 @@ const App = () => {
         />
       )}
 
+      {/* Persistent wait-time display for nearest approaching bus */}
+      {nearestEstimatedBus && (
+        <WaitTimeDisplay
+          routeShortName={nearestEstimatedBus.routeShortName}
+          stopName={nearestEstimatedBus.stopName}
+          etaSeconds={nearestEstimatedBus.etaSeconds}
+        />
+      )}
+
       {/* Map */}
       <BusMap
         patterns={patterns}
@@ -1157,7 +1267,57 @@ const App = () => {
           onClick={handleLocateMe}
           label="Go to my location"
         />
+        <FloatingActionButton
+          icon={isFollowingUser ? <FollowLocationIcon /> : <FollowOffIcon />}
+          onClick={() => {
+            setIsFollowingUser(!isFollowingUser);
+            if (!isFollowingUser && userCoords) {
+              const { flyToLocation } = useLocationStore.getState();
+              flyToLocation(userCoords.lat, userCoords.lng, 15);
+            }
+          }}
+          label={isFollowingUser ? 'Following you' : 'Follow me'}
+          className={isFollowingUser ? 'bg-blue-500 text-white' : ''}
+        />
       </motion.div>
+
+      {/* Secure context warning (geolocation blocked on HTTP) */}
+      {!isSecureContext && navigator.geolocation && (
+        <div className="fixed top-4 left-4 right-4 z-50 rounded-lg bg-amber-50 dark:bg-amber-900/90 border border-amber-200 dark:border-amber-700 p-3 shadow-lg">
+          <div className="flex items-start gap-2">
+            <div className="w-5 h-5 rounded-full bg-amber-100 dark:bg-amber-800 flex items-center justify-center text-amber-700 dark:text-amber-200 font-bold text-xs">
+              ⚠️
+            </div>
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-amber-800 dark:text-amber-100">
+                Location blocked on HTTP
+              </div>
+              <div className="text-xs text-amber-600 dark:text-amber-300 mt-0.5">
+                Geolocation requires HTTPS. Please open this app over HTTPS (or on localhost) to use location tracking.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Location permission denied warning */}
+      {locationPermissionDenied && !isSecureContext === false && (
+        <div className="fixed top-4 left-4 right-4 z-50 rounded-lg bg-red-50 dark:bg-red-900/90 border border-red-200 dark:border-red-700 p-3 shadow-lg">
+          <div className="flex items-start gap-2">
+            <div className="w-5 h-5 rounded-full bg-red-100 dark:bg-red-800 flex items-center justify-center text-red-700 dark:text-red-200 font-bold text-xs">
+              ❌
+            </div>
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-red-800 dark:text-red-100">
+                Location permission denied
+              </div>
+              <div className="text-xs text-red-600 dark:text-red-300 mt-0.5">
+                Enable location permissions in your browser to see your position on the map.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Bottom sheet with tabs */}
       <BottomSheet
