@@ -33,6 +33,7 @@ import { VinBusHttpClient } from '@/lib/vinbus/client';
 import { StationService } from '@/lib/vinbus/stationService';
 import type { RegionCode } from '@/lib/vinbus/models';
 import { parseBusETAList, type BusETAEstimate } from '@/lib/vinbus/busPositionEstimator';
+import { initLogger, downloadLogs } from '@/lib/vinbus/logger';
 import type { Route, TrackedVehicle, BoundingBox, SubscribedRoute, Stop, StopDeparture, StopRoute } from '@/types';
 import { prefixRouteId, stripRouteIdPrefix } from '@/lib/routeId';
 import {
@@ -64,6 +65,12 @@ const LocationIcon = () => (
       d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
     />
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+  </svg>
+);
+
+const DownloadIcon = () => (
+  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-full h-full">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
   </svg>
 );
 
@@ -232,6 +239,7 @@ const findSelectedRoute = (
 };
 
 const App = () => {
+  initLogger();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<SheetTab>(loadSavedTab);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
@@ -1289,6 +1297,11 @@ const App = () => {
           }}
           label={isFollowingUser ? 'Following you' : 'Follow me'}
           className={isFollowingUser ? 'bg-blue-500 text-white' : ''}
+        />
+        <FloatingActionButton
+          icon={<DownloadIcon />}
+          onClick={() => downloadLogs()}
+          label="Download logs"
         />
       </motion.div>
 
