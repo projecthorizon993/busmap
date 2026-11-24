@@ -313,9 +313,10 @@ const App = () => {
     return () => clearTimeout(radiusTimeoutRef.current);
   }, [nearbyRadius]);
   const theme = useSettingsStore((state) => state.theme);
+  const VIETNAM_DECRYPT_KEY = 'ViNbus2o21#K3(y)th3BUSNiElectric';
   const stationService = useMemo(
     () => new StationService(
-      new VinBusHttpClient({ decryptKey: import.meta.env.VITE_VINBUS_DECRYPT_KEY ?? '' }),
+      new VinBusHttpClient({ decryptKey: VIETNAM_DECRYPT_KEY }),
     ),
     [],
   );
@@ -578,11 +579,13 @@ const App = () => {
 
     const fetchStations = async () => {
       try {
-        const regionCode = detectedRegion ?? (import.meta.env.VITE_VINBUS_DEFAULT_REGION ?? 'hcm');
+        // Hardcoded to HCM region; detectedRegion overrides if available
+        const regionCode = detectedRegion || 'hcm';
         const stations = await stationService.getNearbyStations(
           stableCoords.lat, stableCoords.lng, 1500,
           regionCode as RegionCode,
         );
+        console.log('[VinBus] Fetched stations:', stations.length, 'for region:', regionCode);
         setVinbusStations(stations.map((s) => ({
           gtfsId: String(s.stationId),
           name: s.stationName,
@@ -593,7 +596,7 @@ const App = () => {
           code: String(s.stationId),
         })));
       } catch (err) {
-        console.warn('VinBus station import failed:', err);
+        console.error('VinBus station import failed:', err);
       }
     };
 
