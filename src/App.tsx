@@ -603,6 +603,10 @@ const App = () => {
     void fetchStations();
   }, [provider.id, stableCoords, stationService, detectedRegion]);
 
+  if (provider.id === 'vietnam' && stableCoords && vinbusStations.length === 0) {
+    console.log('[VinBus] No stations fetched yet - checking API...');
+  }
+
   // Estimated buses on map: poll estimate_bus_to_station for each nearby station
   const [estimatedBuses, setEstimatedBuses] = useState<BusETAEstimate[]>([]);
   const etaPollRef = useRef<ReturnType<typeof setInterval>>(null);
@@ -633,10 +637,12 @@ const App = () => {
             station.lat, station.lon, station.name,
           );
           allEstimates.push(...estimates);
-        } catch {
-          // Skip individual station failures
-        }
+      } catch {
+        // Skip individual station failures
+        console.log('[VinBus] ETA failed for station', station.gtfsId);
       }
+      }
+      console.log('[VinBus] ETA poll: found', allEstimates.length, 'buses across', vinbusStations.length, 'stations');
       setEstimatedBuses(allEstimates);
     };
 

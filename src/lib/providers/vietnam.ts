@@ -159,12 +159,21 @@ const fetchFleetDetailRaw = async (fid: string): Promise<Record<string, unknown>
     });
 
     const dt = getDt(payload);
-    if (!dt || typeof dt !== 'object') return null;
+    if (!dt || typeof dt !== 'object') {
+      console.log('[Vietnam] fleetdetail fid=' + fid + ': no dt data');
+      return null;
+    }
 
     const d = dt as Record<string, unknown>;
+    const goStation = (d as { Go?: { Station?: unknown[] } }).Go?.Station;
+    const reStation = (d as { Re?: { Station?: unknown[] } }).Re?.Station;
+    const stationsGo = goStation?.length ?? 0;
+    const stationsRe = reStation?.length ?? 0;
+    console.log('[Vietnam] fleetdetail fid=' + fid + ': Go=' + stationsGo + ' Re=' + stationsRe + ' stations');
     fleetCache.writePersistentTimedCacheValue(key, 'dt', d);
     return d;
-  } catch {
+  } catch (err) {
+    console.log('[Vietnam] fleetdetail fid=' + fid + ': error', err);
     return null;
   }
 };
@@ -217,11 +226,12 @@ export const vietnamProvider: TransitProvider = {
               mode: 'bus' as TransportMode,
             }));
           if (routes.length > 0) {
+            console.log('[Vietnam] Catalog loaded', routes.length, 'routes from proxy');
             return routes.sort((a: Route, b: Route) => a.shortName.localeCompare(b.shortName));
           }
         }
-      } catch {
-        // Fall through to prefix discovery below
+      } catch (err) {
+        console.log('[Vietnam] Catalog fetch failed:', err);
       }
     }
 
@@ -266,6 +276,7 @@ export const vietnamProvider: TransitProvider = {
       }
     }
 
+    console.log('[Vietnam] Prefix discovery found', routes.length, 'routes');
     return routes.sort((a, b) => a.shortName.localeCompare(b.shortName));
   },
   fetchAllStops: async (): Promise<Stop[]> => {
