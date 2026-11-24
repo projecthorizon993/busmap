@@ -5,8 +5,9 @@
  * estimated from ETA/distance data and interpolated along the route polyline.
  */
 
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { Marker } from 'react-map-gl/maplibre';
+import type { MapRef } from 'react-map-gl/maplibre';
 import type { BusETAEstimate as BusETAEstimateType } from '@/lib/vinbus/busPositionEstimator';
 
 interface BusETAEstimateProps {
@@ -16,13 +17,14 @@ interface BusETAEstimateProps {
 export const BusETAEstimate: React.FC<BusETAEstimateProps> = ({
   estimate,
 }) => {
-  const markerRef = useRef<HTMLDivElement>(null);
-
   const minutes = Math.floor(estimate.etaSeconds / 60);
   const seconds = estimate.etaSeconds % 60;
   const etaText = minutes > 0
     ? `${minutes}'${seconds.toString().padStart(2, '0')}"`
     : `${seconds}"`;
+
+  const isLive = estimate.isLiveData;
+  const progress = estimate.progressPercent;
 
   return (
     <Marker
@@ -32,7 +34,6 @@ export const BusETAEstimate: React.FC<BusETAEstimateProps> = ({
       anchor="bottom"
     >
       <div
-        ref={markerRef}
         className="w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-2"
       >
         {/* Route badge */}
@@ -59,17 +60,23 @@ export const BusETAEstimate: React.FC<BusETAEstimateProps> = ({
           </div>
           <div className="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
             <div
-              className="h-full bg-blue-500 transition-all duration-500 ease-out"
+              className="h-full transition-all duration-500 ease-out"
               style={{
-                width: `${Math.min(100, Math.max(0, estimate.progressPercent))}%`,
+                width: `${Math.min(100, Math.max(0, progress))}%`,
+                backgroundColor: isLive ? '#3b82f6' : '#f59e0b', // Blue = live GPS, Amber = scheduled
               }}
             />
           </div>
         </div>
 
-        {/* Stop name */}
-        <div className="text-[10px] text-gray-700 dark:text-gray-300 truncate">
-          {estimate.stopName}
+        {/* Stop name + status */}
+        <div className="flex items-start gap-2">
+          <div className="text-[10px] text-gray-700 dark:text-gray-300 truncate">
+            {estimate.stopName}
+          </div>
+          <div className="text-[10px] text-amber-600 dark:text-amber-300 font-bold truncate">
+            {estimate.infoText || (isLive ? 'Live' : 'Scheduled')}
+          </div>
         </div>
       </div>
     </Marker>

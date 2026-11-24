@@ -1,13 +1,15 @@
 /**
- * Estimate a bus position along a route polyline using ETA/distance data
- * from the VinBus `estimate_bus_to_station` endpoint.
+ * Estimate bus position and ETA from VinBus `estimate_bus_to_station` API response.
  *
- * The API returns `distance` (meters remaining to the stop) and `time` (ETA seconds).
- * We place the bus on the route polyline at that distance before the target stop,
- * working backwards along the geometry.
+ * The API returns vehicles with:
+ * - speed: -1 means no live GPS data (scheduled only)
+ * - status: Time string like "21:36 " (scheduled departure time)
+ * - info: Status text like "Last trip"
+ * - vehicleNumber: Actually shows " Expected time " text
+ *
+ * We parse the status time into ETA seconds and place the bus at the stop location
+ * since we don't have real GPS coordinates.
  */
-
-import { haversineDistance } from '@/lib';
 
 export interface RoutePoint {
   lat: number;
@@ -26,83 +28,41 @@ export interface BusETAEstimate {
   stopLat: number;
   stopLng: number;
   stopName: string;
-  /** Estimated bus position on the route */
   estimatedLat: number;
   estimatedLng: number;
-  /** Progress along route from start to target stop (0-100) */
   progressPercent: number;
-  /** Whether the bus has arrived (ETA <= 0) */
   hasArrived: boolean;
+  isLiveData: boolean;      // true if speed >= 0 (real GPS data)
+  statusText: string;       // Raw status string like "21:36 "
+  infoText: string;         // Info text like "Last trip"
 }
 
-/** Total distance along a polyline in meters. */
-function polylineDistance(points: RoutePoint[]): number {
-  let total = 0;
-  for (let i = 1; i < points.length; i++) {
-    total += haversineDistance(points[i - 1].lat, points[i - 1].lon, points[i].lat, points[i].lon);
+/** Parse a time string like "21:36 " into seconds from now */
+function parseETASeconds(timeStr: string): number {
+  if (!timeStr || typeof timeStr !== 'string') return -1;
+
+  const match = timeStr.trim().match(/(\d{1,2}):(\d{2})/);
+  if (!match) return -1;
+
+  const hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2], 10);
+
+  const now = new Date();
+  const target = new Date();
+  target.setHours(hours, minutes, 0, 0);
+
+  // If target time already passed today, assume tomorrow
+  if (target <= now) {
+    target.setDate(target.getDate() + 1);
   }
-  return total;
+
+  const diffMs = target.getTime() - now.getTime();
+  return Math.max(0, Math.floor(diffMs / 1000));
 }
 
-/** Find the point on a polyline that is `d` meters from the end, working backwards. */
-function pointAtDistanceFromEnd(points: RoutePoint[], dFromEnd: number): RoutePoint | null {
-  if (points.length === 0) return null;
-  if (dFromEnd <= 0) return { ...points[points.length - 1] };
-
-  let accumulated = 0;
-  for (let i = points.length - 1; i > 0; i--) {
-    const seg = haversineDistance(points[i].lat, points[i].lon, points[i - 1].lat, points[i - 1].lon);
-    if (accumulated + seg >= dFromEnd) {
-      const remaining = dFromEnd - accumulated;
-      const ratio = seg > 0 ? remaining / seg : 0;
-      // Interpolate from points[i] toward points[i-1]
-      return {
-        lat: points[i].lat + (points[i - 1].lat - points[i].lat) * ratio,
-        lon: points[i].lon + (points[i - 1].lon - points[i].lon) * ratio,
-      };
-    }
-    accumulated += seg;
-  }
-  return { ...points[0] };
-}
-
-/**
- * Estimate bus position on a route given distance remaining to a target stop.
- *
- * @param routeGeometry - Ordered route polyline points (start → end)
- * @param distanceToStopMeters - Meters remaining to the target stop (from API `distance`)
- * @param targetStopLat - Target stop latitude
- * @param targetStopLng - Target stop longitude
- * @returns Estimated bus position and progress, or null if geometry is empty
- */
-export function estimateBusPositionOnRoute(
-  routeGeometry: RoutePoint[],
-  distanceToStopMeters: number,
-): { lat: number; lng: number; progressPercent: number } | null {
-  if (routeGeometry.length === 0) return null;
-
-  const totalDist = polylineDistance(routeGeometry);
-  if (totalDist === 0) return null;
-
-  // Clamp distance to route length
-  const remaining = Math.min(Math.max(0, distanceToStopMeters), totalDist);
-  const traveled = totalDist - remaining;
-
-  const position = pointAtDistanceFromEnd(routeGeometry, remaining);
-  if (!position) return null;
-
-  const progressPercent = Math.min(100, Math.max(0, (traveled / totalDist) * 100));
-
-  return { lat: position.lat, lng: position.lon, progressPercent };
-}
-
-/**
- * Parse raw `estimate_bus_to_station` list items into BusETAEstimate objects.
- * Requires route geometry to estimate position.
- */
 export function parseBusETAList(
   rawList: unknown[],
-  routeGeometry: RoutePoint[],
+  routeGeometry: unknown[],
   targetStopLat: number,
   targetStopLng: number,
   targetStopName: string,
@@ -118,14 +78,26 @@ export function parseBusETAList(
     const routeNo = String(it.routeNo ?? '');
     const routeName = String(it.routeName ?? '');
     const color = String(it.color ?? '#3b82f6');
-    const distanceToStopMeters = Number(it.distance ?? 0) || 0;
-    const etaSeconds = Number(it.time ?? 0) || 0;
-    const speedMps = Number(it.speed ?? 0) || 0;
+    const speedMps = Number(it.speed ?? -1);
+    const etaSeconds = parseETASeconds(String(it.status ?? ''));
+    const statusText = String(it.status ?? '');
+    const infoText = String(it.info ?? '');
+    const isLiveData = speedMps >= 0;
 
-    const pos = estimateBusPositionOnRoute(routeGeometry, distanceToStopMeters);
-    const estimatedLat = pos?.lat ?? targetStopLat;
-    const estimatedLng = pos?.lng ?? targetStopLng;
-    const progressPercent = pos?.progressPercent ?? 0;
+    // If no live GPS data, place bus at the stop location
+    // If we have route geometry, place at start of route (beginning of journey)
+    let estimatedLat = targetStopLat;
+    let estimatedLng = targetStopLng;
+    let progressPercent = 0;
+
+    if (routeGeometry && Array.isArray(routeGeometry) && routeGeometry.length > 0) {
+      const firstPoint = routeGeometry[0] as Record<string, unknown>;
+      if (firstPoint) {
+        estimatedLat = Number(firstPoint.lat ?? targetStopLat);
+        estimatedLng = Number(firstPoint.lon ?? targetStopLng);
+        progressPercent = 0; // At start of route
+      }
+    }
 
     estimates.push({
       busId,
@@ -133,7 +105,7 @@ export function parseBusETAList(
       routeNo,
       routeName,
       color,
-      distanceToStopMeters,
+      distanceToStopMeters: 0,
       etaSeconds,
       speedMps,
       stopLat: targetStopLat,
@@ -143,6 +115,9 @@ export function parseBusETAList(
       estimatedLng,
       progressPercent,
       hasArrived: etaSeconds <= 0,
+      isLiveData,
+      statusText,
+      infoText,
     });
   }
 
