@@ -136,6 +136,8 @@ export interface Stop {
   lon: number;
   vehicleMode: TransportMode;
   routes: StopRoute[];
+  /** Route codes (e.g. timbus.vn FleetOver) passing through this stop */
+  fleetOver?: string[];
   /** Direction-specific headsigns from patterns serving this stop */
   headsigns?: string[];
   /** Maps route gtfsId to GTFS direction IDs (0 or 1) served at this stop */
