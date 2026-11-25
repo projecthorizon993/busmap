@@ -18,7 +18,7 @@ const appVersionAsset: PluginOption = {
 };
 
 // GitHub Pages deploys to /busmap/, local dev uses /
-const base = process.env.GITHUB_ACTIONS === 'true' ? '/busmap/' : '/';
+const base = '/busmap/';
 
 export default defineConfig({
   define: {
