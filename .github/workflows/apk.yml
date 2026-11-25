@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 45
     env:
       VITE_TRANSIT_PROVIDER: vietnam
-      VITE_VIETNAM_API_BASE: http://timbus.vn
+      VITE_VIETNAM_API_BASE: https://vbservice-api.vinbus.vn
       VITE_VINBUS_API_BASE: https://vbservice-api.vinbus.vn
       VITE_VINBUS_TILE_BASE: https://vbcore-maptile-web.vinbus.vn
       VITE_VINBUS_DECRYPT_KEY: ${{ secrets.VINBUS_DECRYPT_KEY }}
