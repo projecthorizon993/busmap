@@ -1,0 +1,27 @@
+name: Test VinBus API Integration
+
+on:
+  push:
+    branches: ['test-vinbus-api']
+  workflow_dispatch:
+
+jobs:
+  test-api:
+    name: Test VinBus API
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run VinBus API integration test
+        run: node scripts/test-vinbus-api.cjs
