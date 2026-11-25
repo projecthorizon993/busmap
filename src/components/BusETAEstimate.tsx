@@ -5,9 +5,7 @@
  * estimated from ETA/distance data and interpolated along the route polyline.
  */
 
-import { useEffect, useRef } from 'react';
 import { Marker } from 'react-map-gl/maplibre';
-import type { MapRef } from 'react-map-gl/maplibre';
 import type { BusETAEstimate as BusETAEstimateType } from '@/lib/vinbus/busPositionEstimator';
 
 interface BusETAEstimateProps {
@@ -23,7 +21,6 @@ export const BusETAEstimate: React.FC<BusETAEstimateProps> = ({
     ? `${minutes}'${seconds.toString().padStart(2, '0')}"`
     : `${seconds}"`;
 
-  const isLive = estimate.isLiveData;
   const progress = estimate.progressPercent;
 
   return (
@@ -63,7 +60,7 @@ export const BusETAEstimate: React.FC<BusETAEstimateProps> = ({
               className="h-full transition-all duration-500 ease-out"
               style={{
                 width: `${Math.min(100, Math.max(0, progress))}%`,
-                backgroundColor: isLive ? '#3b82f6' : '#f59e0b', // Blue = live GPS, Amber = scheduled
+                backgroundColor: '#3b82f6',
               }}
             />
           </div>
@@ -75,7 +72,7 @@ export const BusETAEstimate: React.FC<BusETAEstimateProps> = ({
             {estimate.stopName}
           </div>
           <div className="text-[10px] text-amber-600 dark:text-amber-300 font-bold truncate">
-            {estimate.infoText || (isLive ? 'Live' : 'Scheduled')}
+            {estimate.infoText || (estimate.isLiveData ? 'Live' : 'Scheduled')}
           </div>
         </div>
       </div>
