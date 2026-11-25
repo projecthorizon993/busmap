@@ -21,6 +21,8 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
   },
+  // GitHub Pages deploys to /busmap/, local dev uses /
+  base: process.env.VITE_BASE_URL || '/',
   plugins: [
     appVersionAsset,
     react(),
