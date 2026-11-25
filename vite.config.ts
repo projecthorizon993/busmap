@@ -17,9 +17,8 @@ const appVersionAsset: PluginOption = {
   },
 };
 
-// Detect if we're running on GitHub Pages
-const isGitHubPages = process.env.GITHUB_ACTIONS === 'true';
-const base = isGitHubPages ? '/busmap/' : '/';
+// GitHub Pages deploys to /busmap/, local dev uses /
+const base = process.env.GITHUB_ACTIONS === 'true' ? '/busmap/' : '/';
 
 export default defineConfig({
   define: {
