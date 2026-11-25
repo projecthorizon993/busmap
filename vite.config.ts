@@ -17,12 +17,15 @@ const appVersionAsset: PluginOption = {
   },
 };
 
+// GitHub Pages deploys to /busmap/, local dev uses /
+const isGitHubPages = process.env.GITHUB_ACTIONS === 'true' && process.env.GITHUB_REPOSITORY === 'projecthorizon993/busmap';
+const base = isGitHubPages ? '/busmap/' : '/';
+
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
   },
-  // GitHub Pages deploys to /busmap/, local dev uses /
-  base: process.env.VITE_BASE_URL || '/',
+  base: base,
   plugins: [
     appVersionAsset,
     react(),
