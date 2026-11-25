@@ -17,15 +17,15 @@ const appVersionAsset: PluginOption = {
   },
 };
 
-// GitHub Pages deploys to /busmap/, local dev uses /
-const isGitHubPages = process.env.GITHUB_ACTIONS === 'true' && process.env.GITHUB_REPOSITORY === 'projecthorizon993/busmap';
+// Detect if we're running on GitHub Pages
+const isGitHubPages = process.env.GITHUB_ACTIONS === 'true';
 const base = isGitHubPages ? '/busmap/' : '/';
 
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
   },
-  base: base,
+  base,
   plugins: [
     appVersionAsset,
     react(),
@@ -51,7 +51,6 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // Keep app-version.json out of the precache so old clients can read the latest deployed version.
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {
