@@ -241,7 +241,9 @@ export const vietnamProvider: TransitProvider = {
     if (!PROXY_BASE) return [];
 
     try {
+      console.log('[Vietnam] fetchAllRoutes: fetching', `${ROUTE_LIST_URL}?regionCode=hn`);
       const payload = await getJson(`${ROUTE_LIST_URL}?regionCode=hn`);
+      console.log('[Vietnam] fetchAllRoutes: got payload type=', typeof payload, Array.isArray(payload) ? 'array' : payload && typeof payload === 'object' ? 'object' : 'other');
 
       // Proxy returns decrypted JSON directly. Handle all response shapes:
       // 1) Direct array: [...]
@@ -258,11 +260,7 @@ export const vietnamProvider: TransitProvider = {
       }
 
       if (!Array.isArray(data)) {
-        console.log('[Vietnam] route list: Data is not array');
-        return [];
-      }
-      if (!Array.isArray(data)) {
-        console.log('[Vietnam] route list: Data is not array');
+        console.log('[Vietnam] route list: Data is not array, payload keys:', payload && typeof payload === 'object' ? Object.keys(payload as Record<string, unknown>) : 'not object');
         return [];
       }
 
