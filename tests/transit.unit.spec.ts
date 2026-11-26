@@ -4,8 +4,9 @@ import { test, expect } from '@playwright/test';
 import '@/lib/providers';
 
 // Tests mock HSL fixtures, so force the HSL provider (default is now Vietnam).
-import.meta.env = import.meta.env ?? {};
-import.meta.env.VITE_TRANSIT_PROVIDER = 'hsl';
+if (import.meta.env) {
+  import.meta.env.VITE_TRANSIT_PROVIDER = 'hsl';
+}
 
 import { findMatchingVehicle, computeDepartureCountdown } from '../src/lib/departureCountdown';
 import { extrapolate } from '../src/lib/interpolation';
