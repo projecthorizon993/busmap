@@ -323,7 +323,10 @@ const App = () => {
   }, [nearbyRadius]);
   const theme = useSettingsStore((state) => state.theme);
   const VIETNAM_DECRYPT_KEY = 'ViNbus2o21#K3(y)th3BUSNiElectric';
-  const VIETNAM_PROXY_BASE = import.meta.env.VITE_VIETNAM_PROXY_BASE ?? '';
+  // Cloudflare Worker proxy routes VinBus requests to avoid CORS on GitHub Pages.
+  // Override with VITE_VIETNAM_PROXY_BASE env var if needed.
+  const VIETNAM_PROXY_BASE =
+    import.meta.env.VITE_VIETNAM_PROXY_BASE ?? 'https://busmap-api-proxy.lequangglobal.workers.dev';
   const stationService = useMemo(
     () => new StationService(
       new VinBusHttpClient({ decryptKey: VIETNAM_DECRYPT_KEY, baseUrl: VIETNAM_PROXY_BASE }),
