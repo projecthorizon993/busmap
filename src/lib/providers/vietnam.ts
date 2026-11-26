@@ -1,9 +1,9 @@
 import type {
-  Route, RoutePattern, Stop, StopRoute, VehicleTrip,
-  TransportMode,
+  Route, RoutePattern, Stop, StopRoute, TransportMode, VehicleTrip,
 } from '@/types';
 import {
-  ParsedVehicle, StopTimetableResult, TransitProvider,
+  LiveVehicleAtStation, ParsedVehicle, StopTimetableResult,
+  TransitProvider,
 } from '@/lib/provider';
 import { stripRouteIdPrefix } from '@/lib/routeId';
 import { createCache } from '@/lib/cache';
@@ -19,11 +19,15 @@ const PROXY_BASE = getEnv('VITE_VIETNAM_PROXY_BASE', '').replace(/\/$/, '');
 const DECRYPT_KEY = getEnv('VITE_VIETNAM_DECRYPT_KEY', '');
 const IV_LENGTH = 16; // AES-CBC IV is 16 bytes
 
-// Helper: Convert hex string to Uint8Array
+// Helper: Convert hex string to Uint8Array (browser-compatible, no Node Buffer).
 function hexToUint8Array(hex: string): Uint8Array {
   if (hex.length % 2 !== 0) throw new Error('Invalid hex string');
   if (!/^[0-9a-fA-F]+$/.test(hex)) throw new Error('Invalid hex string');
-  return Buffer.from(hex, 'hex');
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+  }
+  return bytes;
 }
 
 // Decrypt AES-256-CBC encrypted response from timbus.vn
@@ -31,7 +35,7 @@ async function decryptMessage(hex: string, key: string): Promise<unknown> {
   const bytes = hexToUint8Array(hex);
   const iv = bytes.subarray(0, IV_LENGTH);
   const ciphertext = bytes.subarray(IV_LENGTH);
-  const keyBuf = Buffer.from(key, 'utf8').subarray(0, 32);
+  const keyBuf = new TextEncoder().encode(key).subarray(0, 32);
 
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
@@ -42,9 +46,9 @@ async function decryptMessage(hex: string, key: string): Promise<unknown> {
   );
 
   const decrypted = await crypto.subtle.decrypt(
-    { name: 'AES-CBC', iv },
+    { name: 'AES-CBC', iv: iv as unknown as ArrayBufferView<ArrayBuffer> },
     cryptoKey,
-    ciphertext
+    ciphertext as unknown as ArrayBufferView<ArrayBuffer>,
   );
 
   const str = new TextDecoder().decode(decrypted);
@@ -57,7 +61,6 @@ async function decryptMessage(hex: string, key: string): Promise<unknown> {
 
 // timbus.vn endpoints (HTTP). All POST form-urlencoded.
 const SEARCH_PATH = 'Search/action.ashx';
-const VEHICLE_PATH = 'Vehicle/action.ashx';
 
 const timbusUrl = (path: string): string => {
   // When using PROXY_BASE (Cloudflare Worker), path is like "/Search/action.ashx"
@@ -68,7 +71,6 @@ const timbusUrl = (path: string): string => {
 };
 
 const SEARCH_URL = timbusUrl(SEARCH_PATH);
-const VEHICLE_URL = timbusUrl(VEHICLE_PATH);
 
 const requestHeaders: Record<string, string> = {
   'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
@@ -252,6 +254,33 @@ const parseFleetOver = (value: unknown): string[] => {
   return [];
 };
 
+const normalizeVietnamRoute = (r: Record<string, unknown>): Route => {
+  const code = String(r.Code ?? r.code ?? r.shortName ?? r.routeNo ?? '');
+  const name = String(r.Name ?? r.name ?? r.longName ?? r.routeName ?? code);
+  return {
+    gtfsId: `${getEnv('VITE_VIETNAM_ROUTE_ID_PREFIX', 'TB:')}${code}`,
+    shortName: code,
+    longName: name,
+    mode: 'bus' as TransportMode,
+  };
+};
+
+const normalizeVietnamStop = (s: {
+  objectID: string; name: string; geo: { lat: number; lon: number } | null;
+  fleetOver: string[]; routes: StopRoute[];
+}): Stop => {
+  return {
+    gtfsId: s.objectID,
+    name: s.name,
+    code: s.objectID,
+    lat: s.geo?.lat ?? 0,
+    lon: s.geo?.lon ?? 0,
+    vehicleMode: 'bus' as TransportMode,
+    routes: s.routes,
+    fleetOver: s.fleetOver,
+  };
+};
+
 export const vietnamProvider: TransitProvider = {
   id: 'vietnam',
   label: 'Vietnam Transit (timbus.vn)',
@@ -408,7 +437,79 @@ export const vietnamProvider: TransitProvider = {
           // Skip individual route detail failures
         }
       }));
+    }
 
     return Array.from(stationsById.values()).map((s) => normalizeVietnamStop(s));
+  },
+
+  fetchRoutesByIds: async (routeIds: string[]): Promise<Route[]> => {
+    const routes: Route[] = [];
+    for (const routeId of routeIds) {
+      const fid = routeIdToFleetId(routeId);
+      const d = await fetchFleetDetailRaw(fid);
+      if (!d) continue;
+      routes.push(normalizeVietnamRoute(d as Record<string, unknown>));
+    }
+    return routes;
+  },
+
+  fetchRoutePatterns: async (
+    routeIds: string[],
+  ): Promise<Map<string, RoutePattern[]>> => {
+    const patterns = new Map<string, RoutePattern[]>();
+    for (const routeId of routeIds) {
+      const fid = routeIdToFleetId(routeId);
+      const d = await fetchFleetDetailRaw(fid);
+      if (!d) continue;
+      const detail = d as Record<string, unknown>;
+      const list: RoutePattern[] = [];
+      for (const dirKey of ['Go', 'Re'] as const) {
+        const dir = detail[dirKey];
+        if (!dir || typeof dir !== 'object') continue;
+        const points = parseGeoList((dir as Record<string, unknown>).Geo);
+        if (points.length > 0) {
+          list.push({
+            gtfsId: routeId,
+            name: String(detail.Code ?? detail.code ?? routeId),
+            geometry: points,
+          });
+        }
+      }
+      patterns.set(routeId, list);
+    }
+    return patterns;
+  },
+
+  fetchStopTimetable: async (_stopId: string): Promise<StopTimetableResult> => {
+    // timbus.vn exposes no public timetable endpoint.
+    return { departures: [], directions: {} };
+  },
+
+  fetchVehicleTrip: async (
+    _routeId: string,
+    _direction: 1 | 2,
+    _operatingDay: string,
+    _startTime: string,
+  ): Promise<VehicleTrip | null> => {
+    // timbus.vn exposes no vehicle-trip endpoint.
+    return null;
+  },
+
+  fetchStopRoutes: async (_stopId: string): Promise<StopRoute[]> => {
+    // timbus.vn exposes no station-to-routes endpoint.
+    return [];
+  },
+
+  fetchLiveVehiclesAtStation: async (
+    _stationId: string,
+    _fleetOver: string[],
+  ): Promise<LiveVehicleAtStation[]> => {
+    // timbus.vn exposes no live-vehicles-at-station endpoint.
+    return [];
+  },
+
+  parseVehicleMessage: (_topic: string, _payload: Buffer): ParsedVehicle | null => {
+    // Vietnam provider has no MQTT live-vehicle feed.
+    return null;
   },
 };
