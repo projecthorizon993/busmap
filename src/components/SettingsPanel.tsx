@@ -393,7 +393,7 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
                 <div className="rounded-xl border-2 border-gray-200 dark:border-gray-700 p-4 space-y-4">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-primary-500 flex items-center justify-center shrink-0">
-                      <img src="/icon.png" alt="busmap" />
+                      <img src={`${import.meta.env.BASE_URL}icon.png`} alt="busmap" />
                     </div>
                     <div>
                       <div className="font-semibold text-gray-900 dark:text-white">busmap</div>
