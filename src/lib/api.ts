@@ -83,7 +83,7 @@ export const fetchVehicleTrip = (
 
 const ROUTES_CACHE_KEY = 'routes';
 const STOPS_CACHE_KEY = 'stops';
-const ROUTE_PATTERNS_CACHE_KEY = 'route-patterns';
+export const ROUTE_PATTERNS_CACHE_KEY = 'busmap-route-patterns-cache';
 
 const normalizeCachedRoutes = (value: unknown): Route[] | null => {
   if (!Array.isArray(value)) return null;
@@ -153,7 +153,8 @@ export const setCachedRoutePatterns = async (patternsByRouteId: Map<string, Rout
   const timestamp = Date.now();
   await Promise.all(Array.from(patternsByRouteId, async ([routeId, patterns]) => {
     const key = `${ROUTE_PATTERNS_CACHE_KEY}:${routeId}`;
-    await cache().writePersistentTimedCacheValue(key, 'patterns', { patterns, timestamp });
+    const serialized = JSON.stringify({ patterns, timestamp });
+    if (serialized) await cache().writeCacheStorageItem(key, serialized);
   }));
 };
 

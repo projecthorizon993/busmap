@@ -211,6 +211,7 @@ export const createCache = () => {
     readTimedCacheValue,
     readPersistentTimedCacheValue,
     writePersistentTimedCacheValue,
+    writeCacheStorageItem,
     removeLocalStorageItem,
     removeLocalStorageItemsByPrefix,
     deleteCacheStorage,

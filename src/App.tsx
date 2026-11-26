@@ -26,6 +26,7 @@ import {
   watchUserLocation,
 } from '@/stores';
 import { findMatchingVehicle, haversineDistance, mqttService, resolveRouteColor, useRoutePatterns, useStops } from '@/lib';
+import { ROUTE_PATTERNS_CACHE_KEY } from '@/lib/api';
 import { EtaNotification } from '@/components/EtaNotification';
 import { useEtaProximityMonitor } from '@/components/useEtaProximityMonitor';
 import { getProvider } from '@/lib/provider';
@@ -581,6 +582,22 @@ const App = () => {
     vehicleMode: 'bus'; routes: StopRoute[]; code: string;
   }>>([]);
   const provider = getProvider();
+
+  // Clear stale route-pattern entries from localStorage on load so they don't
+  // shadow fresh cache-storage entries (e.g. a retired route's empty cache).
+  useEffect(() => {
+    try {
+      const prefix = `${ROUTE_PATTERNS_CACHE_KEY}:`;
+      const toRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key?.startsWith(prefix)) toRemove.push(key);
+      }
+      toRemove.forEach((key) => localStorage.removeItem(key));
+    } catch {
+      // Ignore storage errors
+    }
+  }, []);
 
   useEffect(() => {
     // Only import stations when the vietnam (VinBus) provider is active

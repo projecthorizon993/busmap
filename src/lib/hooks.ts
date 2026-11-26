@@ -10,6 +10,7 @@ import {
   getCachedRoutesSnapshot,
   getCachedStops,
   getCachedStopsSnapshot,
+  setCachedRoutePatterns,
   setCachedRoutes,
   setCachedStops,
   isApiKeyConfigured,
@@ -69,7 +70,12 @@ export const useStops = (enabled = true) => {
 export const useRoutePatterns = (routeIds: string[]) => {
   return useQuery<Map<string, RoutePattern[]>, Error>({
     queryKey: ['routePatterns', routeIds],
-    queryFn: () => fetchRoutePatterns(routeIds),
+    queryFn: async () => {
+      const patterns = await fetchRoutePatterns(routeIds);
+      // Persist fetched patterns to the cache so they survive reloads.
+      await setCachedRoutePatterns(patterns);
+      return patterns;
+    },
     staleTime: STATIC_API_CACHE_TTL,
     gcTime: STATIC_API_CACHE_TTL,
     enabled: routeIds.length > 0 && isApiKeyConfigured(),
