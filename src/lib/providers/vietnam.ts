@@ -9,7 +9,7 @@ import { stripRouteIdPrefix } from '@/lib/routeId';
 import { createCache } from '@/lib/cache';
 
 const getEnv = (name: string, fallback: string): string => {
-  return import.meta.env[name] ?? fallback;
+  return import.meta.env?.[name] ?? fallback;
 };
 
 const API_BASE = getEnv('VITE_VIETNAM_API_BASE', '');
