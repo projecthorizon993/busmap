@@ -411,3 +411,4 @@ export const vietnamProvider: TransitProvider = {
 
     return Array.from(stationsById.values()).map((s) => normalizeVietnamStop(s));
   },
+};
