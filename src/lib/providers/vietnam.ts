@@ -15,6 +15,10 @@ const PROXY_BASE = getEnv('VITE_VIETNAM_PROXY_BASE', 'https://busmap.lequangglob
 
 // Decryption key for vbservice-api.vinbus.vn AES-256-CBC encrypted responses
 const DECRYPT_KEY = getEnv('VITE_VIETNAM_DECRYPT_KEY', 'ViNbus2o21#K3(y)th3BUSNiElectric');
+
+// Route id prefix + default region for vbservice-api.vinbus.vn
+const ROUTE_ID_PREFIX = getEnv('VITE_VIETNAM_ROUTE_ID_PREFIX', 'TB:');
+const REGION_CODE = getEnv('VITE_VINBUS_DEFAULT_REGION', 'hcm');
 const IV_LENGTH = 16; // AES-CBC IV is 16 bytes
 
 // Helper: Convert hex string to Uint8Array (browser-compatible, no Node Buffer).
@@ -81,32 +85,44 @@ const requestHeaders: Record<string, string> = {
   'X-Requested-With': 'XMLHttpRequest',
 };
 
-const getJson = async (url: string): Promise<unknown> => {
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: requestHeaders,
-  });
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-  }
+const getJson = async (url: string, retries = 4): Promise<unknown> => {
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: requestHeaders,
+    });
 
-  const responseText = await response.text();
+    if (response.ok) {
+      const responseText = await response.text();
 
-  // Try to decrypt if it's hex-encoded AES
-  let decryptedData;
-  try {
-    decryptedData = await decryptMessage(responseText, DECRYPT_KEY);
-  } catch {
-    // If decryption fails, return raw text parsed as JSON if possible
-    try {
-      decryptedData = JSON.parse(responseText);
-    } catch {
-      decryptedData = responseText;
+      // Try to decrypt if it's hex-encoded AES
+      let decryptedData;
+      try {
+        decryptedData = await decryptMessage(responseText, DECRYPT_KEY);
+      } catch {
+        // If decryption fails, return raw text parsed as JSON if possible
+        try {
+          decryptedData = JSON.parse(responseText);
+        } catch {
+          decryptedData = responseText;
+        }
+      }
+
+      return decryptedData;
     }
+
+    lastError = new Error(`HTTP ${response.status}: ${response.statusText}`);
+    if (response.status === 429 && attempt < retries) {
+      await sleep(750 * (attempt + 1) + Math.floor(Math.random() * 250));
+      continue;
+    }
+    throw lastError;
   }
 
-  return decryptedData;
+  throw lastError ?? new Error('Request failed');
 };
 
 const getDt = (payload: unknown): unknown => {
@@ -179,16 +195,22 @@ const fetchRouteDetailRaw = async (routeId: string): Promise<Record<string, unkn
   ));
   if (cached) return cached.value;
 
+  const numericId = routeId.startsWith(ROUTE_ID_PREFIX)
+    ? routeId.slice(ROUTE_ID_PREFIX.length)
+    : routeId;
+
   try {
-    const payload = await getJson(`${ROUTE_DETAIL_URL}?routeId=${encodeURIComponent(routeId)}&regionCode=hn`);
+    const payload = await getJson(`${ROUTE_DETAIL_URL}?routeId=${encodeURIComponent(numericId)}&regionCode=${encodeURIComponent(REGION_CODE)}`);
 
     const dt = getDt(payload);
-    if (!dt || typeof dt !== 'object') {
-      console.log('[Vietnam] route detail routeId=' + routeId + ': no dt data');
+    const d = (dt && isRecord(dt))
+      ? dt
+      : (isRecord(payload) ? payload : null);
+    if (!d) {
+      console.log('[Vietnam] route detail routeId=' + routeId + ': no data');
       return null;
     }
 
-    const d = dt as Record<string, unknown>;
     fleetCache.writePersistentTimedCacheValue(key, 'dt', d);
     return d;
   } catch (err) {
@@ -202,10 +224,11 @@ const isRecord = (value: unknown): value is Record<string, unknown> => (
 );
 
 const normalizeVietnamRoute = (r: Record<string, unknown>): Route => {
-  const code = String(r.Code ?? r.code ?? r.routeNo ?? r.shortName ?? '');
-  const name = String(r.Name ?? r.name ?? r.longName ?? r.routeName ?? code);
+  const code = String(r.routeNo ?? r.Code ?? r.code ?? r.shortName ?? '');
+  const name = String(r.routeName ?? r.Name ?? r.name ?? r.longName ?? code);
+  const numericId = String(r.routeId ?? r.id ?? code);
   return {
-    gtfsId: `${getEnv('VITE_VIETNAM_ROUTE_ID_PREFIX', 'TB:')}${code}`,
+    gtfsId: `${ROUTE_ID_PREFIX}${numericId}`,
     shortName: code,
     longName: name,
     mode: 'bus' as TransportMode,
@@ -242,7 +265,7 @@ export const vietnamProvider: TransitProvider = {
     if (!PROXY_BASE) return [];
 
     try {
-      const url = `${ROUTE_LIST_URL}?regionCode=hn`;
+      const url = `${ROUTE_LIST_URL}?regionCode=${encodeURIComponent(REGION_CODE)}`;
       console.log('[Vietnam] fetchAllRoutes: fetching', url);
       const payload = await getJson(url);
       console.log('[Vietnam] fetchAllRoutes: got payload type=', typeof payload, Array.isArray(payload) ? 'array' : payload && typeof payload === 'object' ? 'object' : 'other');
@@ -293,56 +316,59 @@ export const vietnamProvider: TransitProvider = {
       routes: StopRoute[];
     }>();
 
-    const concurrency = 4;
-    for (let i = 0; i < routes.length; i += concurrency) {
-      const batch = routes.slice(i, i + concurrency);
-      await Promise.all(batch.map(async (route) => {
-        try {
-          const d = await fetchRouteDetailRaw(route.gtfsId);
-          if (!d || typeof d !== 'object') return;
-
-          const detail = d as Record<string, unknown>;
-          const stations = detail.stations;
-          if (!Array.isArray(stations)) return;
-
-          for (const s of stations) {
-            if (typeof s !== 'object' || s === null) continue;
-            const st = s as Record<string, unknown>;
-            const stationId = (st.stationId ?? st.station_id ?? st.id ?? '') as string | number;
-            if (!stationId) continue;
-
-            const geo = parseGeoString(st.lat ?? st.Lat ?? st.latitude) &&
-              parseGeoString(st.lng ?? st.Lng ?? st.lon ?? st.longitude);
-            const lat = typeof st.lat === 'number' ? st.lat : (geo?.lat ?? 0);
-            const lng = typeof st.lng === 'number' ? st.lng : (geo?.lon ?? 0);
-
-            const routeEntry: StopRoute = {
-              gtfsId: route.gtfsId,
-              shortName: route.shortName,
-              longName: route.longName,
-              mode: 'bus' as TransportMode,
-            };
-
-            const key = String(stationId);
-            const existing = stationsById.get(key);
-            if (existing) {
-              if (!existing.routes.some((r) => r.gtfsId === route.gtfsId)) {
-                existing.routes.push(routeEntry);
-              }
-            } else {
-              stationsById.set(key, {
-                stationId,
-                stationName: String(st.stationName ?? st.station_name ?? st.name ?? key),
-                lat,
-                lng,
-                routes: [routeEntry],
-              });
-            }
-          }
-        } catch {
-          // Skip individual route detail failures
+    for (const route of routes) {
+      try {
+        const d = await fetchRouteDetailRaw(route.gtfsId);
+        if (!d || typeof d !== 'object') {
+          await sleep(50);
+          continue;
         }
-      }));
+
+        const detail = d as Record<string, unknown>;
+        const stations = detail.stations;
+        if (!Array.isArray(stations)) {
+          await sleep(50);
+          continue;
+        }
+
+        for (const s of stations) {
+          if (typeof s !== 'object' || s === null) continue;
+          const st = s as Record<string, unknown>;
+          const stationId = (st.stationId ?? st.station_id ?? st.id ?? '') as string | number;
+          if (!stationId) continue;
+
+          const geo = parseGeoString(st.lat ?? st.Lat ?? st.latitude) &&
+            parseGeoString(st.lng ?? st.Lng ?? st.lon ?? st.longitude);
+          const lat = typeof st.lat === 'number' ? st.lat : (geo?.lat ?? 0);
+          const lng = typeof st.lng === 'number' ? st.lng : (geo?.lon ?? 0);
+
+          const routeEntry: StopRoute = {
+            gtfsId: route.gtfsId,
+            shortName: route.shortName,
+            longName: route.longName,
+            mode: 'bus' as TransportMode,
+          };
+
+          const key = String(stationId);
+          const existing = stationsById.get(key);
+          if (existing) {
+            if (!existing.routes.some((r) => r.gtfsId === route.gtfsId)) {
+              existing.routes.push(routeEntry);
+            }
+          } else {
+            stationsById.set(key, {
+              stationId,
+              stationName: String(st.stationName ?? st.station_name ?? st.name ?? key),
+              lat,
+              lng,
+              routes: [routeEntry],
+            });
+          }
+        }
+      } catch {
+        // Skip individual route detail failures
+      }
+      await sleep(120);
     }
 
     return Array.from(stationsById.values()).map((s) => normalizeVietnamStop(s));

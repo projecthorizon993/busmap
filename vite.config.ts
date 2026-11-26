@@ -17,8 +17,8 @@ const appVersionAsset: PluginOption = {
   },
 };
 
-// GitHub Pages deploys to /busmap/, local dev uses /
-const base = '/busmap/';
+// Cloudflare Pages serves from root, local dev uses /
+const base = '/';
 
 export default defineConfig({
   define: {

@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+"postbuild": "node -e \"const fs=require('fs');fs.copyFileSync('public/_routes.json','dist/_routes.json')\"",    "deploy:pages": "npm run build && wrangler pages deploy dist --project-name=busmap",
+    "deploy:worker": "wrangler deploy",
     "ci:build": "npm run lint && npm run typecheck && npm run typecheck:tests && npm run build && npm run ci:verify-build",
     "typecheck:tests": "tsc --noEmit -p tests/tsconfig.json",
     "test": "playwright test",

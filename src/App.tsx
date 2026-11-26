@@ -585,6 +585,7 @@ const App = () => {
     vehicleMode: 'bus'; routes: StopRoute[]; code: string;
   }>>([]);
   const provider = getProvider();
+  console.log('[App] provider.id=', provider.id, 'isApiKeyConfigured=', provider.isApiKeyConfigured());
 
   // Clear stale route-pattern entries from localStorage on load so they don't
   // shadow fresh cache-storage entries (e.g. a retired route's empty cache).
