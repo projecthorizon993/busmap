@@ -1,48 +1,9 @@
 /**
  * BusMap API Proxy - Cloudflare Worker
- * Proxies requests to vbservice-api.vinbus.vn and decrypts AES-256-CBC responses
+ * Proxies GET requests to vbservice-api.vinbus.vn with CORS headers.
+ * The VinBus API returns AES-256-CBC encrypted hex responses; decryption
+ * is performed client-side by the app using the key from the environment.
  */
-
-const IV_LENGTH = 16;
-
-function hexToUint8Array(hex) {
-  if (hex.length % 2 !== 0) throw new Error('Invalid hex string');
-  if (!/^[0-9a-fA-F]+$/.test(hex)) throw new Error('Invalid hex string');
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
-  }
-  return bytes;
-}
-
-async function decryptMessage(hex, key) {
-  const bytes = hexToUint8Array(hex);
-  const iv = bytes.subarray(0, IV_LENGTH);
-  const ciphertext = bytes.subarray(IV_LENGTH);
-  const keyBuf = new TextEncoder().encode(key).subarray(0, 32);
-
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    keyBuf,
-    { name: 'AES-CBC' },
-    false,
-    ['decrypt']
-  );
-
-  const decrypted = await crypto.subtle.decrypt(
-    { name: 'AES-CBC', iv },
-    cryptoKey,
-    ciphertext
-  );
-
-  const str = new TextDecoder().decode(decrypted);
-  try {
-    return JSON.parse(str);
-  } catch {
-    return str;
-  }
-}
-
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -68,7 +29,7 @@ export default {
     }
 
     // Extract the path from the request URL
-    let path = url.pathname;
+    const path = url.pathname;
 
     // Build the vinbus API URL
     const vinbusUrl = new URL(`${env.VINBUS_API_BASE}${path}`);
@@ -91,19 +52,10 @@ export default {
 
       const responseText = await response.text();
 
-      // Try to decrypt if it looks like hex-encoded AES
-      let decrypted;
-      try {
-        decrypted = await decryptMessage(responseText, env.VITE_VIETNAM_DECRYPT_KEY || 'ViNbus2o21#K3(y)th3BUSNiElectric');
-      } catch {
-        // If decryption fails, return raw text
-        decrypted = responseText;
-      }
-
-      return new Response(JSON.stringify(decrypted), {
+      return new Response(responseText, {
         status: response.status,
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': response.headers.get('content-type') || 'application/json',
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'GET, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type',

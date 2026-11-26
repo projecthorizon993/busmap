@@ -19,11 +19,13 @@ const IV_LENGTH = 16; // AES-CBC IV is 16 bytes
 
 // Helper: Convert hex string to Uint8Array (browser-compatible, no Node Buffer).
 function hexToUint8Array(hex: string): Uint8Array {
-  if (hex.length % 2 !== 0) throw new Error('Invalid hex string');
-  if (!/^[0-9a-fA-F]+$/.test(hex)) throw new Error('Invalid hex string');
-  const bytes = new Uint8Array(hex.length / 2);
+  // VinBus API returns JSON-quoted hex strings (e.g. "a3554f79...")
+  const cleaned = hex.replace(/^"(.*)"$/, '$1');
+  if (cleaned.length % 2 !== 0) throw new Error('Invalid hex string');
+  if (!/^[0-9a-fA-F]+$/.test(cleaned)) throw new Error('Invalid hex string');
+  const bytes = new Uint8Array(cleaned.length / 2);
   for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+    bytes[i] = parseInt(cleaned.substr(i * 2, 2), 16);
   }
   return bytes;
 }
