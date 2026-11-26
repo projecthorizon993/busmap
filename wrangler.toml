@@ -1,0 +1,9 @@
+name = "busmap-api-proxy"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+
+[vars]
+TIMBUS_API_BASE = "http://timbus.vn"
+
+[vars.timbus_api_base]
+value = "http://timbus.vn"
