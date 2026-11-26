@@ -19,9 +19,13 @@ const PROXY_BASE = getEnv('VITE_VIETNAM_PROXY_BASE', '').replace(/\/$/, '');
 const SEARCH_PATH = 'Search/action.ashx';
 const VEHICLE_PATH = 'Vehicle/action.ashx';
 
-const timbusUrl = (path: string): string => (
-  PROXY_BASE ? `${PROXY_BASE}/timbus/${path}` : `${API_BASE}/Engine/Business/${path}`
-);
+const timbusUrl = (path: string): string => {
+  // When using PROXY_BASE (Cloudflare Worker), path is like "/Search/action.ashx"
+  // The Worker forwards to http://timbus.vn/Engine/Business/${path}
+  if (PROXY_BASE) return `${PROXY_BASE}${path}`;
+  // Direct timbus.vn access (no proxy)
+  return `${API_BASE}/Engine/Business/${path}`;
+};
 
 const SEARCH_URL = timbusUrl(SEARCH_PATH);
 const VEHICLE_URL = timbusUrl(VEHICLE_PATH);
