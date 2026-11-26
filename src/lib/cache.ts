@@ -2,6 +2,8 @@ import type { CachedValue } from './api';
 
 const LOCAL_STORAGE_CACHE_SIZE_LIMIT = 2_500_000;
 
+const CACHE_NAME = 'busmap-static-api-cache-v1';
+
 const getLocalStorageItem = (key: string): string | null => {
   try {
     return localStorage.getItem(key);
@@ -155,9 +157,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => (
 export const createCache = () => {
   const TTL = 24 * 60 * 60 * 1000;
 
-const CACHE_NAME = 'busmap-static-api-cache-v1';
-
-const readTimedCacheValue = <T>(
+  const readTimedCacheValue = <T>(
     key: string,
     field: string,
     normalizeValue: (value: unknown) => T | null

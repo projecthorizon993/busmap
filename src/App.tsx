@@ -611,7 +611,7 @@ const App = () => {
     };
 
     void fetchStations();
-  }, [provider.id, stableCoords, stationService, detectedRegion]);
+  }, [provider.id, stableCoords, stationService, detectedRegion, VIETNAM_PROXY_BASE]);
 
   if (provider.id === 'vietnam' && stableCoords && vinbusStations.length === 0 && VIETNAM_PROXY_BASE) {
     console.log('[VinBus] No stations fetched yet - checking API...');
