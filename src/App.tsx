@@ -326,7 +326,7 @@ const App = () => {
   // Cloudflare Worker proxy routes VinBus requests to avoid CORS on GitHub Pages.
   // Override with VITE_VIETNAM_PROXY_BASE env var if needed.
   const VIETNAM_PROXY_BASE =
-    import.meta.env.VITE_VIETNAM_PROXY_BASE ?? 'https://busmap-api-proxy.lequangglobal.workers.dev';
+    import.meta.env.VITE_VIETNAM_PROXY_BASE ?? 'https://busmap.lequangglobal.workers.dev';
   const stationService = useMemo(
     () => new StationService(
       new VinBusHttpClient({ decryptKey: VIETNAM_DECRYPT_KEY, baseUrl: VIETNAM_PROXY_BASE }),

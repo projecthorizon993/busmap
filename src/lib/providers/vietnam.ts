@@ -11,7 +11,7 @@ const getEnv = (name: string, fallback: string): string => {
   return import.meta.env?.[name] ?? fallback;
 };
 
-const PROXY_BASE = getEnv('VITE_VIETNAM_PROXY_BASE', 'https://busmap-api-proxy.lequangglobal.workers.dev').replace(/\/$/, '');
+const PROXY_BASE = getEnv('VITE_VIETNAM_PROXY_BASE', 'https://busmap.lequangglobal.workers.dev').replace(/\/$/, '');
 
 // Decryption key for vbservice-api.vinbus.vn AES-256-CBC encrypted responses
 const DECRYPT_KEY = getEnv('VITE_VIETNAM_DECRYPT_KEY', 'ViNbus2o21#K3(y)th3BUSNiElectric');
