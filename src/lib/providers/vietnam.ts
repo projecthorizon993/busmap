@@ -243,13 +243,22 @@ export const vietnamProvider: TransitProvider = {
     try {
       const payload = await getJson(`${ROUTE_LIST_URL}?regionCode=hn`);
 
-      const dt = getDt(payload);
-      if (!dt || typeof dt !== 'object') {
-        console.log('[Vietnam] route list: no dt data');
-        return [];
+      // Proxy returns decrypted JSON directly. Handle all response shapes:
+      // 1) Direct array: [...]
+      // 2) Object with .Data: { Data: [...] }
+      // 3) Object with .dt: { dt: { Data: [...] } }
+      let data: unknown[] | null = null;
+      if (Array.isArray(payload)) {
+        data = payload;
+      } else if (payload && typeof payload === 'object') {
+        const p = payload as Record<string, unknown>;
+        data = p.Data ?? (p.dt && typeof p.dt === 'object' ? (p.dt as Record<string, unknown>).Data : null) ?? null;
       }
 
-      const data = (dt as Record<string, unknown>).Data;
+      if (!Array.isArray(data)) {
+        console.log('[Vietnam] route list: Data is not array');
+        return [];
+      }
       if (!Array.isArray(data)) {
         console.log('[Vietnam] route list: Data is not array');
         return [];
