@@ -118,12 +118,14 @@ function unwrapJsonString(text: string): string {
 }
 export class VinBusApiError extends Error {
   readonly status: number;
+  readonly statusText: string;
   readonly body: string;
 
   constructor(status: number, statusText: string, body: string) {
     super(`VinBus API error ${status}: ${statusText}`);
     this.name = 'VinBusApiError';
     this.status = status;
+    this.statusText = statusText;
     this.body = body;
   }
 }
