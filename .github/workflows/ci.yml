@@ -22,6 +22,7 @@ jobs:
       # All transit HTTP/WebSocket requests are fulfilled by test fixtures.
       # Fork/Renovate PRs do not need production API secrets.
       VITE_DIGITRANSIT_API_KEY: ci-fixture-key
+      VITE_TRANSIT_PROVIDER: hsl
 
     steps:
       - name: Check out repository

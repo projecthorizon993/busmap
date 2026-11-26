@@ -322,11 +322,12 @@ const App = () => {
   }, [nearbyRadius]);
   const theme = useSettingsStore((state) => state.theme);
   const VIETNAM_DECRYPT_KEY = 'ViNbus2o21#K3(y)th3BUSNiElectric';
+  const VIETNAM_PROXY_BASE = import.meta.env.VITE_VIETNAM_PROXY_BASE ?? '';
   const stationService = useMemo(
     () => new StationService(
-      new VinBusHttpClient({ decryptKey: VIETNAM_DECRYPT_KEY }),
+      new VinBusHttpClient({ decryptKey: VIETNAM_DECRYPT_KEY, baseUrl: VIETNAM_PROXY_BASE }),
     ),
-    [],
+    [VIETNAM_PROXY_BASE],
   );
   const subscribedRoutes = useSubscriptionStore((state) => state.subscribedRoutes);
   const vehiclesMap = useVehicleStore((state) => state.vehicles);
@@ -583,7 +584,8 @@ const App = () => {
 
   useEffect(() => {
     // Only import stations when the vietnam (VinBus) provider is active
-    if (provider.id !== 'vietnam' || !stableCoords) return;
+    // and a proxy base URL is configured (direct browser->VinBus is blocked by CORS).
+    if (provider.id !== 'vietnam' || !stableCoords || !VIETNAM_PROXY_BASE) return;
 
     const fetchStations = async () => {
       try {
@@ -611,7 +613,7 @@ const App = () => {
     void fetchStations();
   }, [provider.id, stableCoords, stationService, detectedRegion]);
 
-  if (provider.id === 'vietnam' && stableCoords && vinbusStations.length === 0) {
+  if (provider.id === 'vietnam' && stableCoords && vinbusStations.length === 0 && VIETNAM_PROXY_BASE) {
     console.log('[VinBus] No stations fetched yet - checking API...');
   }
 
