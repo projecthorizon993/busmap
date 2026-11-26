@@ -5,7 +5,6 @@ import {
   LiveVehicleAtStation, ParsedVehicle, StopTimetableResult,
   TransitProvider,
 } from '@/lib/provider';
-import { stripRouteIdPrefix } from '@/lib/routeId';
 import { createCache } from '@/lib/cache';
 
 const getEnv = (name: string, fallback: string): string => {
@@ -68,11 +67,10 @@ const timbusUrl = (path: string): string => {
 
 const ROUTE_LIST_URL = timbusUrl('/client/route/list');
 const ROUTE_DETAIL_URL = timbusUrl('/client/route/detail');
-const STATION_NEAR_URL = timbusUrl('/client/station/near');
-const STATION_DETAIL_URL = timbusUrl('/client/station/detail');
-const STATION_ESTIMATE_URL = timbusUrl('/client/station/estimate_bus_to_station');
-const ROUTE_TIMELINE_URL = timbusUrl('/client/route/timeline');
-const SYSTEM_STORES_URL = timbusUrl('/client/system/stores');
+// VinBus endpoints (GET, AES-256-CBC encrypted hex responses)
+// /client/route/list?regionCode=hn
+// /client/route/detail?routeId=X&regionCode=hn
+// /client/station/near?lat=...&lng=...&r=700&regionCode=hn
 
 const requestHeaders: Record<string, string> = {
   'Accept': 'application/json',
@@ -164,36 +162,6 @@ const parseGeoString = (value: unknown): { lat: number; lon: number } | null => 
 
   return null;
 };
-
-const parseGeoList = (value: unknown): { lat: number; lon: number }[] => {
-  if (value === null || value === undefined) return [];
-
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!trimmed) return [];
-
-    const segments = trimmed.split(/[;\s|]+/).filter(Boolean);
-    const points: { lat: number; lon: number }[] = [];
-    for (const seg of segments) {
-      const pt = parseGeoString(seg);
-      if (pt) points.push(pt);
-    }
-    return points;
-  }
-
-  if (Array.isArray(value)) {
-    const points: { lat: number; lon: number }[] = [];
-    for (const item of value as unknown[]) {
-      const pt = parseGeoString(item);
-      if (pt) points.push(pt);
-    }
-    return points;
-  }
-
-  return [];
-};
-
-const routeIdToFleetId = (routeId: string): string => stripRouteIdPrefix(routeId);
 
 // 24h TTL cache for static route detail payloads (routes, geometry, stations).
 const fleetCache = createCache();
@@ -327,7 +295,7 @@ export const vietnamProvider: TransitProvider = {
           for (const s of stations) {
             if (typeof s !== 'object' || s === null) continue;
             const st = s as Record<string, unknown>;
-            const stationId = st.stationId ?? st.station_id ?? st.id ?? '';
+            const stationId = (st.stationId ?? st.station_id ?? st.id ?? '') as string | number;
             if (!stationId) continue;
 
             const geo = parseGeoString(st.lat ?? st.Lat ?? st.latitude) &&
