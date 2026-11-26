@@ -1,9 +1,10 @@
 /**
  * BusMap API Proxy - Cloudflare Worker
  * Proxies requests to timbus.vn and decrypts AES-256-CBC responses
+ * to avoid CORS issues when calling from web app
  */
 
-const IV_LENGTH = 16; // 16 bytes for AES-CBC IV
+const IV_LENGTH = 16; // AES-CBC IV is 16 bytes
 
 function hexToUint8Array(hex) {
   if (hex.length % 2 !== 0) throw new Error('Invalid hex string');
@@ -11,37 +12,31 @@ function hexToUint8Array(hex) {
   return Buffer.from(hex, 'hex');
 }
 
-async function decryptAES256CBC(hexData, keyString) {
+async function decryptMessage(hex, key) {
+  const bytes = hexToUint8Array(hex);
+  const iv = bytes.subarray(0, IV_LENGTH);
+  const ciphertext = bytes.subarray(IV_LENGTH);
+  const keyBuf = Buffer.from(key, 'utf8').subarray(0, 32);
+
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyBuf,
+    { name: 'AES-CBC' },
+    false,
+    ['decrypt']
+  );
+
+  const decrypted = await crypto.subtle.decrypt(
+    { name: 'AES-CBC', iv },
+    cryptoKey,
+    ciphertext
+  );
+
+  const str = new TextDecoder().decode(decrypted);
   try {
-    const bytes = hexToUint8Array(hex);
-    const iv = bytes.subarray(0, IV_LENGTH);
-    const ciphertext = bytes.subarray(IV_LEN);
-
-    const keyBuf = Buffer.from(keyString, 'utf8').subarray(0, 32);
-
-    const cryptoKey = await crypto.subtle.importKey(
-      'raw',
-      keyBuf,
-      { name: 'AES-CBC' },
-      false,
-      ['decrypt']
-    );
-
-    const decrypted = await crypto.subtle.decrypt(
-      { name: 'AES-CBC', iv },
-      cryptoKey,
-      ciphertext
-    );
-
-    const str = new TextDecoder().decode(decrypted);
-    try {
-      return JSON.parse(str);
-    } catch {
-      return str;
-    }
-  } catch (e) {
-    console.error('Decryption error:', e.message);
-    throw e;
+    return JSON.parse(str);
+  } catch {
+    return str;
   }
 }
 
@@ -91,22 +86,22 @@ export default {
     try {
       const response = await fetch(timbusUrl.toString(), {
         headers: {
-          'Accept': 'application/json',
+          'Content-Type': 'application/json',
           'Referer': 'http://timbus.vn/',
           'Origin': 'http://timbus.vn',
           'X-Requested-With': 'XMLHttpRequest',
         },
       });
 
-      const data = await response.text();
+      const responseText = await response.text();
 
-      // Try to decrypt if it looks like hex-encoded AES
+      // Try to decrypt the response if it's hex-encoded
       let decryptedData;
       try {
-        decryptedData = await decryptMessage(data, env.DECRYPT_KEY || 'ViNbus2o21#K3(y)th3BUSNiElectric');
-      } catch {
+        decryptedData = await decryptMessage(responseText, env.VITE_VIETNAM_DECRYPT_KEY || 'ViNbus2o21#K3(y)th3BUSNiElectric');
+      } catch (err) {
         // If decryption fails, return raw text
-        decryptedData = data;
+        decryptedData = responseText;
       }
 
       return new Response(JSON.stringify(decryptedData), {
@@ -117,7 +112,7 @@ export default {
           'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type',
           'Access-Control-Max-Age': '86400',
-          'Cache-Control': 'public, max-age=300', // Cache for 5 minutes
+          'Cache-Control': 'public, max-age=300',
         },
       });
     } catch (error) {
