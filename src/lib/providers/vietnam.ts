@@ -15,6 +15,46 @@ const getEnv = (name: string, fallback: string): string => {
 const API_BASE = getEnv('VITE_VIETNAM_API_BASE', '');
 const PROXY_BASE = getEnv('VITE_VIETNAM_PROXY_BASE', '').replace(/\/$/, '');
 
+// Decryption key for timbus.vn AES-256-CBC encrypted responses
+const DECRYPT_KEY = getEnv('VITE_VIETNAM_DECRYPT_KEY', '');
+const IV_LENGTH = 16; // AES-CBC IV is 16 bytes
+
+// Helper: Convert hex string to Uint8Array
+function hexToUint8Array(hex: string): Uint8Array {
+  if (hex.length % 2 !== 0) throw new Error('Invalid hex string');
+  if (!/^[0-9a-fA-F]+$/.test(hex)) throw new Error('Invalid hex string');
+  return Buffer.from(hex, 'hex');
+}
+
+// Decrypt AES-256-CBC encrypted response from timbus.vn
+async function decryptMessage(hex: string, key: string): Promise<unknown> {
+  const bytes = hexToUint8Array(hex);
+  const iv = bytes.subarray(0, IV_LENGTH);
+  const ciphertext = bytes.subarray(IV_LENGTH);
+  const keyBuf = Buffer.from(key, 'utf8').subarray(0, 32);
+
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyBuf,
+    { name: 'AES-CBC' },
+    false,
+    ['decrypt']
+  );
+
+  const decrypted = await crypto.subtle.decrypt(
+    { name: 'AES-CBC', iv },
+    cryptoKey,
+    ciphertext
+  );
+
+  const str = new TextDecoder().decode(decrypted);
+  try {
+    return JSON.parse(str);
+  } catch {
+    return str;
+  }
+}
+
 // timbus.vn endpoints (HTTP). All POST form-urlencoded.
 const SEARCH_PATH = 'Search/action.ashx';
 const VEHICLE_PATH = 'Vehicle/action.ashx';
@@ -53,7 +93,22 @@ const postForm = async (url: string, body: Record<string, string>): Promise<unkn
     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
   }
 
-  return await response.json();
+  const responseText = await response.text();
+
+  // Try to decrypt if it's hex-encoded AES
+  let decryptedData;
+  try {
+    decryptedData = await decryptMessage(responseText, DECRYPT_KEY);
+  } catch {
+    // If decryption fails, return raw text parsed as JSON if possible
+    try {
+      decryptedData = JSON.parse(responseText);
+    } catch {
+      decryptedData = responseText;
+    }
+  }
+
+  return decryptedData;
 };
 
 const getDt = (payload: unknown): unknown => {
@@ -323,10 +378,10 @@ export const vietnamProvider: TransitProvider = {
               const fleetOver = parseFleetOver(st.FleetOver);
 
               const routeEntry: StopRoute = {
-                gtfsId: route.gtfsId,
+                gtfsId: `${getEnv('VITE_VIETNAM_ROUTE_ID_PREFIX', 'TB:')}${route.gtfsId}`,
                 shortName: route.shortName,
                 longName: route.longName,
-                mode: 'bus',
+                mode: 'bus' as TransportMode,
               };
 
               const existing = stationsById.get(objectID);
@@ -353,185 +408,6 @@ export const vietnamProvider: TransitProvider = {
           // Skip individual route detail failures
         }
       }));
-    }
 
     return Array.from(stationsById.values()).map((s) => normalizeVietnamStop(s));
   },
-  fetchRoutesByIds: async (routeIds: string[]): Promise<Route[]> => {
-    if (!API_BASE && !PROXY_BASE || routeIds.length === 0) return [];
-
-    const routes: Route[] = [];
-    for (const routeId of routeIds) {
-      try {
-        const fid = routeIdToFleetId(routeId);
-        const payload = await postForm(SEARCH_URL, {
-          act: 'fleetdetail',
-          fid,
-        });
-
-        const dt = getDt(payload);
-        if (!dt || typeof dt !== 'object') continue;
-
-        const d = dt as Record<string, unknown>;
-        routes.push(normalizeVietnamRouteFromDetail(d));
-      } catch {
-        // Skip individual route failures
-      }
-    }
-    return routes;
-  },
-  fetchRoutePatterns: async (routeIds: string[]): Promise<Map<string, RoutePattern[]>> => {
-    const result = new Map<string, RoutePattern[]>();
-    if (!API_BASE && !PROXY_BASE || routeIds.length === 0) return result;
-
-    for (const routeId of routeIds) {
-      result.set(routeId, []);
-      try {
-        const fid = routeIdToFleetId(routeId);
-        const d = await fetchFleetDetailRaw(fid);
-        if (!d || typeof d !== 'object') continue;
-
-        const detail = d as Record<string, unknown>;
-        const patterns: RoutePattern[] = [];
-
-        for (const dirKey of ['Go', 'Re']) {
-          const dir = detail[dirKey];
-          if (!dir || typeof dir !== 'object') continue;
-
-          const dirObj = dir as Record<string, unknown>;
-          const geo = dirObj.Geo;
-          const geometry = parseGeoList(geo);
-
-          if (geometry.length > 0) {
-            patterns.push({
-              gtfsId: routeId,
-              name: dirKey === 'Go' ? 'Outbound' : 'Inbound',
-              geometry,
-            });
-          }
-        }
-
-        result.set(routeId, patterns);
-      } catch {
-        // Skip individual route failures
-      }
-    }
-    return result;
-  },
-  fetchStopTimetable: async (): Promise<StopTimetableResult> => {
-    // timbus.vn static API does not expose live departures/ETAs.
-    return { departures: [], directions: {} };
-  },
-  fetchVehicleTrip: async (): Promise<VehicleTrip | null> => {
-    // timbus.vn static API does not expose live vehicle trips.
-    return null;
-  },
-  fetchStopRoutes: async (_stopId: string): Promise<StopRoute[]> => {
-    // Stop-to-routes mapping is populated from fleetdetail station data.
-    return [];
-  },
-  parseVehicleMessage: (): ParsedVehicle | null => {
-    // timbus.vn has no MQTT live vehicle GPS feed.
-    return null;
-  },
-  /**
-   * Fetch live vehicles approaching a stop (eta/gps).
-   *
-   * POST act=partremained to Engine/Business/Vehicle/action.ashx.
-   * Returns vehicles with license plate, route code, distance remaining (m)
-   * and time remaining (s).
-   */
-  fetchLiveVehiclesAtStation: async (stationId: string, fleetOver: string[]): Promise<Array<{
-    vehicleId: string;
-    routeCode: string;
-    distanceMeters: number;
-    etaSeconds: number;
-  }>> => {
-    if (!API_BASE && !PROXY_BASE) return [];
-
-    try {
-      const payload = await postForm(VEHICLE_URL, {
-        act: 'partremained',
-        State: 'true',
-        StationID: stationId,
-        FleetOver: fleetOver.join(','),
-      });
-
-      const dt = getDt(payload);
-      const arr: unknown[] = Array.isArray(dt) ? dt
-        : (isRecord(dt) && Array.isArray(dt.Data) ? dt.Data : []);
-
-      return arr
-        .filter((v): v is Record<string, unknown> => typeof v === 'object' && v !== null)
-        .map((v) => ({
-          vehicleId: String(v.BienKiemSoat ?? v.bienKiemSoat ?? v.plate ?? v.id ?? ''),
-          routeCode: String(v.FleetCode ?? v.fleetCode ?? v.route ?? ''),
-          distanceMeters: Number(v.PartRemained ?? v.partRemained ?? v.distance ?? 0) || 0,
-          etaSeconds: Number(v.TimeRemained ?? v.timeRemained ?? v.eta ?? 0) || 0,
-        }))
-        .filter((v) => v.vehicleId.length > 0);
-    } catch {
-      return [];
-    }
-  },
-};
-
-const normalizeVietnamRoute = (raw: Record<string, unknown>): Route => {
-  const objectID = raw.ObjectID ?? raw.objectID ?? raw.id ?? raw.route_id ?? '';
-  const shortName = String(
-    raw.ShortName ?? raw.short_name ?? raw.route_short_name ??
-    raw.Name ?? raw.name ?? '',
-  );
-  const longName = String(
-    raw.LongName ?? raw.long_name ?? raw.route_long_name ??
-    raw.Name ?? raw.name ?? '',
-  );
-  const cost = raw.Cost ?? raw.cost ?? null;
-
-  return {
-    gtfsId: `${getEnv('VITE_VIETNAM_ROUTE_ID_PREFIX', 'TB:')}${objectID}`,
-    shortName: shortName || String(objectID),
-    longName: longName || shortName || String(objectID),
-    mode: 'bus',
-    ...(cost !== null && cost !== undefined ? { color: undefined } : {}),
-  };
-};
-
-const normalizeVietnamRouteFromDetail = (d: Record<string, unknown>): Route => {
-  const objectID = d.ObjectID ?? d.objectID ?? d.id ?? '';
-  const shortName = String(
-    d.ShortName ?? d.short_name ?? d.route_short_name ??
-    d.Name ?? d.name ?? String(objectID),
-  );
-  const longName = String(
-    d.LongName ?? d.long_name ?? d.route_long_name ??
-    d.Name ?? d.name ?? shortName,
-  );
-
-  return {
-    gtfsId: `${getEnv('VITE_VIETNAM_ROUTE_ID_PREFIX', 'TB:')}${objectID}`,
-    shortName: shortName || String(objectID),
-    longName: longName || shortName || String(objectID),
-    mode: 'bus',
-  };
-};
-
-const normalizeVietnamStop = (s: {
-  objectID: string; name: string; geo: { lat: number; lon: number } | null;
-  fleetOver: string[]; routes: StopRoute[];
-}): Stop => {
-  const gtfsId = `${getEnv('VITE_VIETNAM_ROUTE_ID_PREFIX', 'TB:')}${s.objectID}`;
-  const lat = s.geo?.lat ?? 0;
-  const lon = s.geo?.lon ?? 0;
-
-  return {
-    gtfsId,
-    name: s.name || s.objectID,
-    code: s.objectID,
-    lat,
-    lon,
-    vehicleMode: 'bus',
-    routes: s.routes,
-    ...(s.fleetOver.length > 0 ? { fleetOver: s.fleetOver } : {}),
-  };
-};

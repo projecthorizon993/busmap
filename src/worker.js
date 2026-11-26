@@ -1,22 +1,25 @@
 /**
  * BusMap API Proxy - Cloudflare Worker
  * Proxies requests to timbus.vn and decrypts AES-256-CBC responses
- * to avoid CORS issues when calling from web app
  */
 
-const IV_LENGTH = 16; // AES-CBC IV is 16 bytes
+const IV_LENGTH = 16;
 
 function hexToUint8Array(hex) {
   if (hex.length % 2 !== 0) throw new Error('Invalid hex string');
   if (!/^[0-9a-fA-F]+$/.test(hex)) throw new Error('Invalid hex string');
-  return Buffer.from(hex, 'hex');
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+  }
+  return bytes;
 }
 
 async function decryptMessage(hex, key) {
   const bytes = hexToUint8Array(hex);
   const iv = bytes.subarray(0, IV_LENGTH);
   const ciphertext = bytes.subarray(IV_LENGTH);
-  const keyBuf = Buffer.from(key, 'utf8').subarray(0, 32);
+  const keyBuf = new TextEncoder().encode(key).subarray(0, 32);
 
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
@@ -38,6 +41,13 @@ async function decryptMessage(hex, key) {
   } catch {
     return str;
   }
+}
+
+function isHexEncoded(str) {
+  const trimmed = str.trim();
+  if (trimmed.length === 0) return false;
+  if (trimmed.length % 2 !== 0) return false;
+  return /^[0-9a-fA-F]+$/.test(trimmed);
 }
 
 export default {
@@ -79,14 +89,14 @@ export default {
     const timbusUrl = new URL(`${env.TIMBUS_API_BASE}${path}`);
 
     // Copy query parameters
-    url.searchParams.forEach((value, key) => {
-      timbusUrl.searchParams.set(key, value);
+    url.searchParams.forEach((v, k) => {
+      timbusUrl.searchParams.set(k, v);
     });
 
     try {
       const response = await fetch(timbusUrl.toString(), {
         headers: {
-          'Content-Type': 'application/json',
+          'Accept': 'application/json',
           'Referer': 'http://timbus.vn/',
           'Origin': 'http://timbus.vn',
           'X-Requested-With': 'XMLHttpRequest',
@@ -95,16 +105,16 @@ export default {
 
       const responseText = await response.text();
 
-      // Try to decrypt the response if it's hex-encoded
-      let decryptedData;
+      // Try to decrypt if it looks like hex-encoded AES
+      let decrypted;
       try {
-        decryptedData = await decryptMessage(responseText, env.VITE_VIETNAM_DECRYPT_KEY || 'ViNbus2o21#K3(y)th3BUSNiElectric');
-      } catch (err) {
+        decrypted = await decryptMessage(responseText, env.VITE_VIETNAM_DECRYPT_KEY || 'ViNbus2o21#K3(y)th3BUSNiElectric');
+      } catch {
         // If decryption fails, return raw text
-        decryptedData = responseText;
+        decrypted = responseText;
       }
 
-      return new Response(JSON.stringify(decryptedData), {
+      return new Response(JSON.stringify(decrypted), {
         status: response.status,
         headers: {
           'Content-Type': 'application/json',
