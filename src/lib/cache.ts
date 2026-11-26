@@ -82,7 +82,7 @@ const readCacheStorageItem = async (key: string): Promise<unknown | null> => {
   if (!request) return null;
 
   try {
-    const cache = await window.caches.open('busmap-static-api-cache');
+    const cache = await window.caches.open(CACHE_NAME);
     const response = await cache.match(request);
     if (!response) return null;
 
@@ -99,7 +99,7 @@ const writeCacheStorageItem = async (key: string, serialized: string): Promise<v
   if (!request) return;
 
   try {
-    const cache = await window.caches.open('busmap-static-api-cache');
+    const cache = await window.caches.open(CACHE_NAME);
     await cache.put(request, new Response(serialized, {
       headers: { 'Content-Type': 'application/json' },
     }));
@@ -115,7 +115,7 @@ const removeCacheStorageItem = async (key: string): Promise<void> => {
   if (!request) return;
 
   try {
-    const cache = await window.caches.open('busmap-static-api-cache');
+    const cache = await window.caches.open(CACHE_NAME);
     await cache.delete(request);
   } catch {
     // Ignore storage errors
@@ -155,7 +155,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> => (
 export const createCache = () => {
   const TTL = 24 * 60 * 60 * 1000;
 
-  const readTimedCacheValue = <T>(
+const CACHE_NAME = 'busmap-static-api-cache-v1';
+
+const readTimedCacheValue = <T>(
     key: string,
     field: string,
     normalizeValue: (value: unknown) => T | null

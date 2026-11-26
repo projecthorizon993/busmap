@@ -1,4 +1,8 @@
 import { test, expect } from '@playwright/test';
+
+// Register built-in providers so getProvider() resolves in tests.
+import '@/lib/providers';
+
 import { findMatchingVehicle, computeDepartureCountdown } from '../src/lib/departureCountdown';
 import { extrapolate } from '../src/lib/interpolation';
 import { useVehicleStore } from '../src/stores/vehicleStore';
