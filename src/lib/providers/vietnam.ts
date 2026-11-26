@@ -252,7 +252,9 @@ export const vietnamProvider: TransitProvider = {
         data = payload;
       } else if (payload && typeof payload === 'object') {
         const p = payload as Record<string, unknown>;
-        data = p.Data ?? (p.dt && typeof p.dt === 'object' ? (p.dt as Record<string, unknown>).Data : null) ?? null;
+        data = (p.Data as unknown[] | null) ??
+          ((p.dt as Record<string, unknown> | null)?.Data as unknown[] | null) ??
+          null;
       }
 
       if (!Array.isArray(data)) {
