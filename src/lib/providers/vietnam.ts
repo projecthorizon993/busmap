@@ -13,7 +13,7 @@ const getEnv = (name: string, fallback: string): string => {
 };
 
 const API_BASE = getEnv('VITE_VIETNAM_API_BASE', '');
-const PROXY_BASE = getEnv('VITE_VIETNAM_PROXY_BASE', '').replace(/\/$/, '');
+const PROXY_BASE = getEnv('VITE_VIETNAM_PROXY_BASE', 'https://busmap-api-proxy.lequangglobal.workers.dev').replace(/\/$/, '');
 
 // Decryption key for timbus.vn AES-256-CBC encrypted responses
 const DECRYPT_KEY = getEnv('VITE_VIETNAM_DECRYPT_KEY', '');

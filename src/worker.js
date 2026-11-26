@@ -1,6 +1,6 @@
 /**
  * BusMap API Proxy - Cloudflare Worker
- * Proxies requests to vbservice-api.vinbus.vn and decrypts AES-256-CBC responses
+ * Proxies requests to timbus.vn and decrypts AES-256-CBC responses
  */
 
 const IV_LENGTH = 16;
@@ -80,8 +80,13 @@ export default {
     // Strip /api/ or /timbus/ prefix if present
     path = path.replace(/^(\/api|\/timbus)\//, '/');
 
-    // Build the vinbus API URL (paths are like /client/station/near, no /Engine/Business/ prefix)
-    const timbusUrl = new URL(`${env.VINBUS_API_BASE}${path}`);
+    // timbus.vn paths need /Engine/Business/ prefix
+    if (!path.startsWith('/Engine/Business/')) {
+      path = '/Engine/Business' + path;
+    }
+
+    // Build the timbus.vn URL
+    const timbusUrl = new URL(`${env.TIMBUS_API_BASE}${path}`);
 
     // Copy query parameters
     url.searchParams.forEach((v, k) => {
@@ -92,8 +97,8 @@ export default {
       const response = await fetch(timbusUrl.toString(), {
         headers: {
           'Accept': 'application/json',
-          'Referer': 'https://maps.vinbus.vn/',
-          'Origin': 'https://maps.vinbus.vn',
+          'Referer': 'http://timbus.vn/',
+          'Origin': 'http://timbus.vn',
           'X-Requested-With': 'XMLHttpRequest',
         },
       });
