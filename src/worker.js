@@ -66,8 +66,8 @@ export default {
       });
     }
 
-    // Only allow GET requests
-    if (request.method !== 'GET') {
+    // Allow GET and POST requests
+    if (request.method !== 'GET' && request.method !== 'POST') {
       return new Response(JSON.stringify({ error: 'Method not allowed' }), {
         status: 405,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
@@ -93,15 +93,26 @@ export default {
       timbusUrl.searchParams.set(k, v);
     });
 
+    // Build fetch options
+    const fetchOptions = {
+      method: request.method,
+      headers: {
+        'Accept': 'application/json',
+        'Referer': 'http://timbus.vn/',
+        'Origin': 'http://timbus.vn',
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+    };
+
+    // Forward body for POST requests
+    if (request.method === 'POST') {
+      const contentType = request.headers.get('content-type') || '';
+      fetchOptions.headers['Content-Type'] = contentType;
+      fetchOptions.body = await request.text();
+    }
+
     try {
-      const response = await fetch(timbusUrl.toString(), {
-        headers: {
-          'Accept': 'application/json',
-          'Referer': 'http://timbus.vn/',
-          'Origin': 'http://timbus.vn',
-          'X-Requested-With': 'XMLHttpRequest',
-        },
-      });
+      const response = await fetch(timbusUrl.toString(), fetchOptions);
 
       const responseText = await response.text();
 
