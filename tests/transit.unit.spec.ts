@@ -5,7 +5,7 @@ import '@/lib/providers';
 
 // Unit tests mock HSL fixtures, so force the HSL provider.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-(import.meta as any).env = { ...import.meta.env, VITE_TRANSIT_PROVIDER: 'hsl' };
+(import.meta as any).env = { ...(import.meta as any).env, VITE_TRANSIT_PROVIDER: 'hsl' };
 
 import { findMatchingVehicle, computeDepartureCountdown } from '../src/lib/departureCountdown';
 import { extrapolate } from '../src/lib/interpolation';
