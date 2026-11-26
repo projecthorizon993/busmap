@@ -238,11 +238,13 @@ export const vietnamProvider: TransitProvider = {
   isApiKeyConfigured: () => true,
   normalizeMode: (): TransportMode => 'bus',
   fetchAllRoutes: async (): Promise<Route[]> => {
+    console.log('[Vietnam] fetchAllRoutes: PROXY_BASE=', PROXY_BASE);
     if (!PROXY_BASE) return [];
 
     try {
-      console.log('[Vietnam] fetchAllRoutes: fetching', `${ROUTE_LIST_URL}?regionCode=hn`);
-      const payload = await getJson(`${ROUTE_LIST_URL}?regionCode=hn`);
+      const url = `${ROUTE_LIST_URL}?regionCode=hn`;
+      console.log('[Vietnam] fetchAllRoutes: fetching', url);
+      const payload = await getJson(url);
       console.log('[Vietnam] fetchAllRoutes: got payload type=', typeof payload, Array.isArray(payload) ? 'array' : payload && typeof payload === 'object' ? 'object' : 'other');
 
       // Proxy returns decrypted JSON directly. Handle all response shapes:
