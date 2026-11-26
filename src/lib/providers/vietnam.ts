@@ -12,11 +12,10 @@ const getEnv = (name: string, fallback: string): string => {
   return import.meta.env?.[name] ?? fallback;
 };
 
-const API_BASE = getEnv('VITE_VIETNAM_API_BASE', '');
 const PROXY_BASE = getEnv('VITE_VIETNAM_PROXY_BASE', 'https://busmap-api-proxy.lequangglobal.workers.dev').replace(/\/$/, '');
 
-// Decryption key for timbus.vn AES-256-CBC encrypted responses
-const DECRYPT_KEY = getEnv('VITE_VIETNAM_DECRYPT_KEY', '');
+// Decryption key for vbservice-api.vinbus.vn AES-256-CBC encrypted responses
+const DECRYPT_KEY = getEnv('VITE_VIETNAM_DECRYPT_KEY', 'ViNbus2o21#K3(y)th3BUSNiElectric');
 const IV_LENGTH = 16; // AES-CBC IV is 16 bytes
 
 // Helper: Convert hex string to Uint8Array (browser-compatible, no Node Buffer).
@@ -30,7 +29,7 @@ function hexToUint8Array(hex: string): Uint8Array {
   return bytes;
 }
 
-// Decrypt AES-256-CBC encrypted response from timbus.vn
+// Decrypt AES-256-CBC encrypted response from vbservice-api.vinbus.vn
 async function decryptMessage(hex: string, key: string): Promise<unknown> {
   const bytes = hexToUint8Array(hex);
   const iv = bytes.subarray(0, IV_LENGTH);
@@ -59,36 +58,33 @@ async function decryptMessage(hex: string, key: string): Promise<unknown> {
   }
 }
 
-// timbus.vn endpoints (HTTP). All POST form-urlencoded.
-const SEARCH_PATH = 'Search/action.ashx';
-
+// vbservice-api.vinbus.vn endpoints (GET, AES-256-CBC encrypted hex responses)
 const timbusUrl = (path: string): string => {
-  // When using PROXY_BASE (Cloudflare Worker), path is like "/Search/action.ashx"
-  // The Worker forwards to http://timbus.vn/Engine/Business/${path}
+  // When using PROXY_BASE (Cloudflare Worker), path is like "/client/route/list"
   if (PROXY_BASE) return `${PROXY_BASE}${path}`;
-  // Direct timbus.vn access (no proxy)
-  return `${API_BASE}/Engine/Business/${path}`;
+  // Direct vbservice-api.vinbus.vn access (no proxy)
+  return `https://vbservice-api.vinbus.vn${path}`;
 };
 
-const SEARCH_URL = timbusUrl(SEARCH_PATH);
+const ROUTE_LIST_URL = timbusUrl('/client/route/list');
+const ROUTE_DETAIL_URL = timbusUrl('/client/route/detail');
+const STATION_NEAR_URL = timbusUrl('/client/station/near');
+const STATION_DETAIL_URL = timbusUrl('/client/station/detail');
+const STATION_ESTIMATE_URL = timbusUrl('/client/station/estimate_bus_to_station');
+const ROUTE_TIMELINE_URL = timbusUrl('/client/route/timeline');
+const SYSTEM_STORES_URL = timbusUrl('/client/system/stores');
 
 const requestHeaders: Record<string, string> = {
-  'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
   'Accept': 'application/json',
-  'Referer': 'http://timbus.vn/',
-  'Origin': 'http://timbus.vn',
+  'Referer': 'https://maps.vinbus.vn/',
+  'Origin': 'https://maps.vinbus.vn',
   'X-Requested-With': 'XMLHttpRequest',
 };
 
-const postForm = async (url: string, body: Record<string, string>): Promise<unknown> => {
-  const formBody = Object.entries(body)
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-    .join('&');
-
+const getJson = async (url: string): Promise<unknown> => {
   const response = await fetch(url, {
-    method: 'POST',
+    method: 'GET',
     headers: requestHeaders,
-    body: formBody,
   });
 
   if (!response.ok) {
@@ -199,42 +195,34 @@ const parseGeoList = (value: unknown): { lat: number; lon: number }[] => {
 
 const routeIdToFleetId = (routeId: string): string => stripRouteIdPrefix(routeId);
 
-// 24h TTL cache for static fleetdetail payloads (routes, geometry, stations).
+// 24h TTL cache for static route detail payloads (routes, geometry, stations).
 const fleetCache = createCache();
 
-const FLEET_DETAIL_CACHE_KEY = (fid: string) => `fleetdetail:${fid}`;
+const FLEET_DETAIL_CACHE_KEY = (routeId: string) => `routedetail:${routeId}`;
 
-const fetchFleetDetailRaw = async (fid: string): Promise<Record<string, unknown> | null> => {
-  if (!API_BASE && !PROXY_BASE) return null;
+const fetchRouteDetailRaw = async (routeId: string): Promise<Record<string, unknown> | null> => {
+  if (!PROXY_BASE) return null;
 
-  const key = FLEET_DETAIL_CACHE_KEY(fid);
+  const key = FLEET_DETAIL_CACHE_KEY(routeId);
   const cached = fleetCache.readTimedCacheValue(key, 'dt', (v): Record<string, unknown> | null => (
     isRecord(v) ? v : null
   ));
   if (cached) return cached.value;
 
   try {
-    const payload = await postForm(SEARCH_URL, {
-      act: 'fleetdetail',
-      fid,
-    });
+    const payload = await getJson(`${ROUTE_DETAIL_URL}?routeId=${encodeURIComponent(routeId)}&regionCode=hn`);
 
     const dt = getDt(payload);
     if (!dt || typeof dt !== 'object') {
-      console.log('[Vietnam] fleetdetail fid=' + fid + ': no dt data');
+      console.log('[Vietnam] route detail routeId=' + routeId + ': no dt data');
       return null;
     }
 
     const d = dt as Record<string, unknown>;
-    const goStation = (d as { Go?: { Station?: unknown[] } }).Go?.Station;
-    const reStation = (d as { Re?: { Station?: unknown[] } }).Re?.Station;
-    const stationsGo = goStation?.length ?? 0;
-    const stationsRe = reStation?.length ?? 0;
-    console.log('[Vietnam] fleetdetail fid=' + fid + ': Go=' + stationsGo + ' Re=' + stationsRe + ' stations');
     fleetCache.writePersistentTimedCacheValue(key, 'dt', d);
     return d;
   } catch (err) {
-    console.log('[Vietnam] fleetdetail fid=' + fid + ': error', err);
+    console.log('[Vietnam] route detail routeId=' + routeId + ': error', err);
     return null;
   }
 };
@@ -243,19 +231,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
 );
 
-const parseFleetOver = (value: unknown): string[] => {
-  if (value === null || value === undefined) return [];
-  if (typeof value === 'string') {
-    return value.split(',').map((s) => s.trim()).filter(Boolean);
-  }
-  if (Array.isArray(value)) {
-    return value.map(String).filter(Boolean);
-  }
-  return [];
-};
-
 const normalizeVietnamRoute = (r: Record<string, unknown>): Route => {
-  const code = String(r.Code ?? r.code ?? r.shortName ?? r.routeNo ?? '');
+  const code = String(r.Code ?? r.code ?? r.routeNo ?? r.shortName ?? '');
   const name = String(r.Name ?? r.name ?? r.longName ?? r.routeName ?? code);
   return {
     gtfsId: `${getEnv('VITE_VIETNAM_ROUTE_ID_PREFIX', 'TB:')}${code}`,
@@ -266,24 +243,22 @@ const normalizeVietnamRoute = (r: Record<string, unknown>): Route => {
 };
 
 const normalizeVietnamStop = (s: {
-  objectID: string; name: string; geo: { lat: number; lon: number } | null;
-  fleetOver: string[]; routes: StopRoute[];
+  stationId: string | number; stationName: string; lat: number; lng: number;
 }): Stop => {
   return {
-    gtfsId: s.objectID,
-    name: s.name,
-    code: s.objectID,
-    lat: s.geo?.lat ?? 0,
-    lon: s.geo?.lon ?? 0,
+    gtfsId: String(s.stationId),
+    name: s.stationName,
+    code: String(s.stationId),
+    lat: s.lat,
+    lon: s.lng,
     vehicleMode: 'bus' as TransportMode,
-    routes: s.routes,
-    fleetOver: s.fleetOver,
+    routes: [],
   };
 };
 
 export const vietnamProvider: TransitProvider = {
   id: 'vietnam',
-  label: 'Vietnam Transit (timbus.vn)',
+  label: 'Vietnam Transit (vbservice-api.vinbus.vn)',
   cacheKeyPrefix: 'busmap-vietnam-',
   routeIdPrefix: getEnv('VITE_VIETNAM_ROUTE_ID_PREFIX', 'TB:'),
   timezone: getEnv('VITE_VIETNAM_TIMEZONE', 'Asia/Ho_Chi_Minh'),
@@ -293,144 +268,94 @@ export const vietnamProvider: TransitProvider = {
   isApiKeyConfigured: () => true,
   normalizeMode: (): TransportMode => 'bus',
   fetchAllRoutes: async (): Promise<Route[]> => {
-    if (!API_BASE && !PROXY_BASE) return [];
+    if (!PROXY_BASE) return [];
 
-    // Prefer the synced route catalog (served over HTTPS via the backend proxy)
-    // instead of brute-forcing searchfull prefixes.
-    if (PROXY_BASE) {
-      try {
-        const res = await fetch(`${PROXY_BASE}/api/routes`);
-        if (res.ok) {
-          const payload = await res.json();
-          const catalog = (Array.isArray(payload?.routes) ? payload.routes : []) as unknown[];
-          const routes = catalog
-            .filter((r): r is { fid: string; shortName?: string; longName?: string } =>
-              typeof r === 'object' && r !== null && typeof (r as { fid?: unknown }).fid === 'string' && (r as { fid: string }).fid.length > 0,
-            )
-            .map((r) => ({
-              gtfsId: `${getEnv('VITE_VIETNAM_ROUTE_ID_PREFIX', 'TB:')}${r.fid}`,
-              shortName: r.shortName || r.fid,
-              longName: r.longName || r.shortName || r.fid,
-              mode: 'bus' as TransportMode,
-            }));
-          if (routes.length > 0) {
-            console.log('[Vietnam] Catalog loaded', routes.length, 'routes from proxy');
-            return routes.sort((a: Route, b: Route) => a.shortName.localeCompare(b.shortName));
-          }
-        }
-      } catch (err) {
-        console.log('[Vietnam] Catalog fetch failed:', err);
+    try {
+      const payload = await getJson(`${ROUTE_LIST_URL}?regionCode=hn`);
+
+      const dt = getDt(payload);
+      if (!dt || typeof dt !== 'object') {
+        console.log('[Vietnam] route list: no dt data');
+        return [];
       }
-    }
 
-    // Fallback: timbus.vn searchfull supports a key prefix. Discover all routes by
-    // querying numeric prefixes 0-9 plus E, BRT, CNG, then deduplicate by ObjectID.
-    const prefixes = [
-      '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-      'E', 'BRT', 'CNG',
-    ];
-
-    const seen = new Set<string>();
-    const routes: Route[] = [];
-
-    for (const prefix of prefixes) {
-      try {
-        const payload = await postForm(SEARCH_URL, {
-          act: 'searchfull',
-          typ: '1',
-          key: prefix,
-        });
-
-        const dt = getDt(payload);
-        if (!dt || typeof dt !== 'object') continue;
-
-        const data = (dt as Record<string, unknown>).Data;
-        if (!Array.isArray(data)) continue;
-
-        for (const r of data) {
-          if (typeof r !== 'object' || r === null) continue;
-          const objectID = String(
-            (r as Record<string, unknown>).ObjectID ??
-            (r as Record<string, unknown>).objectID ??
-            (r as Record<string, unknown>).id ??
-            '',
-          );
-          if (!objectID || seen.has(objectID)) continue;
-          seen.add(objectID);
-          routes.push(normalizeVietnamRoute(r as Record<string, unknown>));
-        }
-      } catch {
-        // Skip individual prefix failures
+      const data = (dt as Record<string, unknown>).Data;
+      if (!Array.isArray(data)) {
+        console.log('[Vietnam] route list: Data is not array');
+        return [];
       }
-    }
 
-    console.log('[Vietnam] Prefix discovery found', routes.length, 'routes');
-    return routes.sort((a, b) => a.shortName.localeCompare(b.shortName));
+      const routes: Route[] = [];
+      for (const r of data) {
+        if (typeof r !== 'object' || r === null) continue;
+        routes.push(normalizeVietnamRoute(r as Record<string, unknown>));
+      }
+
+      console.log('[Vietnam] Route list loaded', routes.length, 'routes');
+      return routes.sort((a: Route, b: Route) => a.shortName.localeCompare(b.shortName));
+    } catch (err) {
+      console.log('[Vietnam] Route list fetch failed:', err);
+      return [];
+    }
   },
-  fetchAllStops: async (): Promise<Stop[]> => {
-    if (!API_BASE && !PROXY_BASE) return [];
 
-    // timbus.vn has no standalone "all stops" endpoint. Stops are discovered
-    // per-route via fleetdetail, so collect stations across all routes.
+  fetchAllStops: async (): Promise<Stop[]> => {
+    if (!PROXY_BASE) return [];
+
+    // vbservice-api.vinbus.vn has no standalone "all stops" endpoint.
+    // Stops are discovered per-route via route detail, so collect stations across all routes.
     const routes = await vietnamProvider.fetchAllRoutes();
     if (routes.length === 0) return [];
 
     const stationsById = new Map<string, {
-      objectID: string; name: string; geo: { lat: number; lon: number } | null;
-      fleetOver: string[]; routes: StopRoute[];
+      stationId: string | number; stationName: string; lat: number; lng: number;
+      routes: StopRoute[];
     }>();
 
-    const concurrency = 6;
+    const concurrency = 4;
     for (let i = 0; i < routes.length; i += concurrency) {
       const batch = routes.slice(i, i + concurrency);
       await Promise.all(batch.map(async (route) => {
-        const fid = routeIdToFleetId(route.gtfsId);
         try {
-          const d = await fetchFleetDetailRaw(fid);
+          const d = await fetchRouteDetailRaw(route.gtfsId);
           if (!d || typeof d !== 'object') return;
 
           const detail = d as Record<string, unknown>;
-          for (const dirKey of ['Go', 'Re']) {
-            const dir = detail[dirKey];
-            if (!dir || typeof dir !== 'object') continue;
-            const dirObj = dir as Record<string, unknown>;
-            const stations = dirObj.Station;
-            if (!Array.isArray(stations)) continue;
+          const stations = detail.stations;
+          if (!Array.isArray(stations)) return;
 
-            for (const s of stations) {
-              if (typeof s !== 'object' || s === null) continue;
-              const st = s as Record<string, unknown>;
-              const objectID = String(st.ObjectID ?? st.objectID ?? st.id ?? '');
-              if (!objectID) continue;
+          for (const s of stations) {
+            if (typeof s !== 'object' || s === null) continue;
+            const st = s as Record<string, unknown>;
+            const stationId = st.stationId ?? st.station_id ?? st.id ?? '';
+            if (!stationId) continue;
 
-              const geo = parseGeoString(st.Geo);
-              const fleetOver = parseFleetOver(st.FleetOver);
+            const geo = parseGeoString(st.lat ?? st.Lat ?? st.latitude) &&
+              parseGeoString(st.lng ?? st.Lng ?? st.lon ?? st.longitude);
+            const lat = typeof st.lat === 'number' ? st.lat : (geo?.lat ?? 0);
+            const lng = typeof st.lng === 'number' ? st.lng : (geo?.lon ?? 0);
 
-              const routeEntry: StopRoute = {
-                gtfsId: `${getEnv('VITE_VIETNAM_ROUTE_ID_PREFIX', 'TB:')}${route.gtfsId}`,
-                shortName: route.shortName,
-                longName: route.longName,
-                mode: 'bus' as TransportMode,
-              };
+            const routeEntry: StopRoute = {
+              gtfsId: route.gtfsId,
+              shortName: route.shortName,
+              longName: route.longName,
+              mode: 'bus' as TransportMode,
+            };
 
-              const existing = stationsById.get(objectID);
-              if (existing) {
-                if (geo && !existing.geo) existing.geo = geo;
-                for (const code of fleetOver) {
-                  if (!existing.fleetOver.includes(code)) existing.fleetOver.push(code);
-                }
-                if (!existing.routes.some((r) => r.gtfsId === route.gtfsId)) {
-                  existing.routes.push(routeEntry);
-                }
-              } else {
-                stationsById.set(objectID, {
-                  objectID,
-                  name: String(st.Name ?? st.name ?? objectID),
-                  geo: geo ?? null,
-                  fleetOver,
-                  routes: [routeEntry],
-                });
+            const key = String(stationId);
+            const existing = stationsById.get(key);
+            if (existing) {
+              if (!existing.routes.some((r) => r.gtfsId === route.gtfsId)) {
+                existing.routes.push(routeEntry);
               }
+            } else {
+              stationsById.set(key, {
+                stationId,
+                stationName: String(st.stationName ?? st.station_name ?? st.name ?? key),
+                lat,
+                lng,
+                routes: [routeEntry],
+              });
             }
           }
         } catch {
@@ -445,8 +370,7 @@ export const vietnamProvider: TransitProvider = {
   fetchRoutesByIds: async (routeIds: string[]): Promise<Route[]> => {
     const routes: Route[] = [];
     for (const routeId of routeIds) {
-      const fid = routeIdToFleetId(routeId);
-      const d = await fetchFleetDetailRaw(fid);
+      const d = await fetchRouteDetailRaw(routeId);
       if (!d) continue;
       routes.push(normalizeVietnamRoute(d as Record<string, unknown>));
     }
@@ -458,30 +382,38 @@ export const vietnamProvider: TransitProvider = {
   ): Promise<Map<string, RoutePattern[]>> => {
     const patterns = new Map<string, RoutePattern[]>();
     for (const routeId of routeIds) {
-      const fid = routeIdToFleetId(routeId);
-      const d = await fetchFleetDetailRaw(fid);
+      const d = await fetchRouteDetailRaw(routeId);
       if (!d) continue;
       const detail = d as Record<string, unknown>;
       const list: RoutePattern[] = [];
-      for (const dirKey of ['Go', 'Re'] as const) {
-        const dir = detail[dirKey];
-        if (!dir || typeof dir !== 'object') continue;
-        const points = parseGeoList((dir as Record<string, unknown>).Geo);
-        if (points.length > 0) {
+
+      // VinBus route detail has stations with lat/lng per station order
+      const stations = detail.stations;
+      if (Array.isArray(stations)) {
+        const geometry: { lat: number; lon: number }[] = [];
+        for (const s of stations) {
+          if (typeof s !== 'object' || s === null) continue;
+          const st = s as Record<string, unknown>;
+          const pt = parseGeoString(st.lat ?? st.Lat) &&
+                     parseGeoString(st.lng ?? st.Lng);
+          if (pt) geometry.push(pt);
+        }
+        if (geometry.length > 0) {
           list.push({
             gtfsId: routeId,
-            name: String(detail.Code ?? detail.code ?? routeId),
-            geometry: points,
+            name: String(detail.Code ?? detail.code ?? detail.routeNo ?? routeId),
+            geometry,
           });
         }
       }
+
       patterns.set(routeId, list);
     }
     return patterns;
   },
 
   fetchStopTimetable: async (_stopId: string): Promise<StopTimetableResult> => {
-    // timbus.vn exposes no public timetable endpoint.
+    // vbservice-api.vinbus.vn exposes no public timetable endpoint.
     return { departures: [], directions: {} };
   },
 
@@ -491,12 +423,12 @@ export const vietnamProvider: TransitProvider = {
     _operatingDay: string,
     _startTime: string,
   ): Promise<VehicleTrip | null> => {
-    // timbus.vn exposes no vehicle-trip endpoint.
+    // vbservice-api.vinbus.vn exposes no vehicle-trip endpoint.
     return null;
   },
 
   fetchStopRoutes: async (_stopId: string): Promise<StopRoute[]> => {
-    // timbus.vn exposes no station-to-routes endpoint.
+    // vbservice-api.vinbus.vn exposes no station-to-routes endpoint.
     return [];
   },
 
@@ -504,7 +436,7 @@ export const vietnamProvider: TransitProvider = {
     _stationId: string,
     _fleetOver: string[],
   ): Promise<LiveVehicleAtStation[]> => {
-    // timbus.vn exposes no live-vehicles-at-station endpoint.
+    // vbservice-api.vinbus.vn exposes no live-vehicles-at-station endpoint.
     return [];
   },
 

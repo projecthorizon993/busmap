@@ -1,6 +1,6 @@
 /**
  * BusMap API Proxy - Cloudflare Worker
- * Proxies requests to timbus.vn and decrypts AES-256-CBC responses
+ * Proxies requests to vbservice-api.vinbus.vn and decrypts AES-256-CBC responses
  */
 
 const IV_LENGTH = 16;
@@ -43,13 +43,6 @@ async function decryptMessage(hex, key) {
   }
 }
 
-function isHexEncoded(str) {
-  const trimmed = str.trim();
-  if (trimmed.length === 0) return false;
-  if (trimmed.length % 2 !== 0) return false;
-  return /^[0-9a-fA-F]+$/.test(trimmed);
-}
-
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -59,15 +52,15 @@ export default {
       return new Response(null, {
         headers: {
           'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Methods': 'GET, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type',
           'Access-Control-Max-Age': '86400',
         },
       });
     }
 
-    // Allow GET and POST requests
-    if (request.method !== 'GET' && request.method !== 'POST') {
+    // Only allow GET requests
+    if (request.method !== 'GET') {
       return new Response(JSON.stringify({ error: 'Method not allowed' }), {
         status: 405,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
@@ -77,42 +70,24 @@ export default {
     // Extract the path from the request URL
     let path = url.pathname;
 
-    // Strip /api/ or /timbus/ prefix if present
-    path = path.replace(/^(\/api|\/timbus)\//, '/');
-
-    // timbus.vn paths need /Engine/Business/ prefix
-    if (!path.startsWith('/Engine/Business/')) {
-      path = '/Engine/Business' + path;
-    }
-
-    // Build the timbus.vn URL
-    const timbusUrl = new URL(`${env.TIMBUS_API_BASE}${path}`);
+    // Build the vinbus API URL
+    const vinbusUrl = new URL(`${env.VINBUS_API_BASE}${path}`);
 
     // Copy query parameters
     url.searchParams.forEach((v, k) => {
-      timbusUrl.searchParams.set(k, v);
+      vinbusUrl.searchParams.set(k, v);
     });
 
-    // Build fetch options
-    const fetchOptions = {
-      method: request.method,
-      headers: {
-        'Accept': 'application/json',
-        'Referer': 'http://timbus.vn/',
-        'Origin': 'http://timbus.vn',
-        'X-Requested-With': 'XMLHttpRequest',
-      },
-    };
-
-    // Forward body for POST requests
-    if (request.method === 'POST') {
-      const contentType = request.headers.get('content-type') || '';
-      fetchOptions.headers['Content-Type'] = contentType;
-      fetchOptions.body = await request.text();
-    }
-
     try {
-      const response = await fetch(timbusUrl.toString(), fetchOptions);
+      const response = await fetch(vinbusUrl.toString(), {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Referer': 'https://maps.vinbus.vn/',
+          'Origin': 'https://maps.vinbus.vn',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+      });
 
       const responseText = await response.text();
 
@@ -130,7 +105,7 @@ export default {
         headers: {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Methods': 'GET, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type',
           'Access-Control-Max-Age': '86400',
           'Cache-Control': 'public, max-age=300',
