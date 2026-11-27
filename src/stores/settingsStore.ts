@@ -29,7 +29,7 @@ const defaultSettings: Settings = {
   theme: 'system',
   mapStyle: 'voyager',
   showRouteLines: true,
-  showStops: false,
+  showStops: true,
   showNearbyRoutes: false,
   routeColorMode: 'off',
   animateVehicles: true,
