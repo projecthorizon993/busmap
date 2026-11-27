@@ -130,55 +130,6 @@ const getDt = (payload: unknown): unknown => {
   return p.dt ?? null;
 };
 
-const parseGeoString = (value: unknown): { lat: number; lon: number } | null => {
-  if (value === null || value === undefined) return null;
-
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!trimmed) return null;
-
-    const parts = trimmed.split(',').map((p) => Number(p.trim()));
-    if (parts.length === 2 && parts.every((p) => Number.isFinite(p))) {
-      const [a, b] = parts;
-      if (Math.abs(a) <= 90 && Math.abs(b) <= 180) {
-        return { lat: a, lon: b };
-      }
-      if (Math.abs(b) <= 90 && Math.abs(a) <= 180) {
-        return { lat: b, lon: a };
-      }
-    }
-    return null;
-  }
-
-  if (Array.isArray(value)) {
-    const arr = value as unknown[];
-    if (arr.length >= 2) {
-      const a = Number(arr[0]);
-      const b = Number(arr[1]);
-      if (Number.isFinite(a) && Number.isFinite(b)) {
-        if (Math.abs(a) <= 90 && Math.abs(b) <= 180) {
-          return { lat: a, lon: b };
-        }
-        if (Math.abs(b) <= 90 && Math.abs(a) <= 180) {
-          return { lat: b, lon: a };
-        }
-      }
-    }
-    return null;
-  }
-
-  if (typeof value === 'object') {
-    const obj = value as Record<string, unknown>;
-    const lat = Number(obj.lat ?? obj.Lat ?? obj.latitude ?? obj.y ?? 0);
-    const lon = Number(obj.lon ?? obj.lng ?? obj.Lon ?? obj.Lng ?? obj.longitude ?? obj.x ?? 0);
-    if (Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) {
-      return { lat, lon };
-    }
-    return null;
-  }
-
-  return null;
-};
 
 // 24h TTL cache for static route detail payloads (routes, geometry, stations).
 const fleetCache = createCache();
@@ -301,9 +252,11 @@ export const vietnamProvider: TransitProvider = {
         for (const s of stations) {
           if (typeof s !== 'object' || s === null) continue;
           const st = s as Record<string, unknown>;
-          const pt = parseGeoString(st.lat ?? st.Lat) &&
-                     parseGeoString(st.lng ?? st.Lng);
-          if (pt) geometry.push(pt);
+          const lat = typeof st.lat === 'number' ? st.lat : Number(st.lat ?? st.Lat);
+          const lng = typeof st.lng === 'number' ? st.lng : Number(st.lng ?? st.Lng);
+          if (Number.isFinite(lat) && Number.isFinite(lng)) {
+            geometry.push({ lat, lon: lng });
+          }
         }
         if (geometry.length > 0) {
           list.push({
