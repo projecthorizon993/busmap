@@ -93,19 +93,12 @@ export default {
 
       const responseText = await response.text();
 
-      // Try to decrypt if it looks like hex-encoded AES
-      let decrypted;
-      try {
-        decrypted = await decryptMessage(responseText, env.VITE_VIETNAM_DECRYPT_KEY || 'ViNbus2o21#K3(y)th3BUSNiElectric');
-      } catch {
-        // If decryption fails, return raw text
-        decrypted = responseText;
-      }
-
-      return new Response(JSON.stringify(decrypted), {
+      // Return the raw (still encrypted) payload; the browser decrypts it
+      // client-side using the shared VinBus decryption key.
+      return new Response(responseText, {
         status: response.status,
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'text/plain; charset=utf-8',
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'GET, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type',
