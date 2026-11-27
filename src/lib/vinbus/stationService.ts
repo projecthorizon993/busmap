@@ -84,7 +84,7 @@ export class StationService {
     isInternalStation: number | string = 0,
   ): Promise<BusArrival[]> {
     return (await this.client.get<BusArrival[]>(
-      '/client/station/estimate_bus_to_station',
+      '/api/eta',
       {
         regionCode,
         stationId: String(stationId),
