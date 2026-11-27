@@ -18,7 +18,7 @@ const DECRYPT_KEY = getEnv('VITE_VIETNAM_DECRYPT_KEY', 'ViNbus2o21#K3(y)th3BUSNi
 
 // Route id prefix + default region for vbservice-api.vinbus.vn
 const ROUTE_ID_PREFIX = getEnv('VITE_VIETNAM_ROUTE_ID_PREFIX', 'TB:');
-const REGION_CODE = getEnv('VITE_VINBUS_DEFAULT_REGION', 'hcm');
+const REGION_CODE = getEnv('VITE_VINBUS_DEFAULT_REGION', 'hn');
 const IV_LENGTH = 16; // AES-CBC IV is 16 bytes
 
 // Helper: Convert hex string to Uint8Array (browser-compatible, no Node Buffer).

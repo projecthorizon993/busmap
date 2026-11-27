@@ -610,8 +610,8 @@ const App = () => {
 
     const fetchStations = async () => {
       try {
-        // Hardcoded to HCM region; detectedRegion overrides if available
-        const regionCode = detectedRegion || 'hcm';
+        // Default to Hanoi region; detectedRegion overrides if available
+        const regionCode = detectedRegion || 'hn';
         const stations = await stationService.getNearbyStations(
           stableCoords.lat, stableCoords.lng, 1500,
           regionCode as RegionCode,
@@ -652,7 +652,7 @@ const App = () => {
       return;
     }
 
-    const regionCode = (import.meta.env.VITE_VINBUS_DEFAULT_REGION ?? 'hcm') as RegionCode;
+    const regionCode = (import.meta.env.VITE_VINBUS_DEFAULT_REGION ?? 'hn') as RegionCode;
 
     const fetchEstimates = async () => {
       const allEstimates: BusETAEstimate[] = [];
