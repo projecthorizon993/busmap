@@ -125,7 +125,7 @@ export const RouteDetails = ({
             </div>
           </div>;
         })}
-        {!routeVehicles.length && <p className="rounded-xl bg-gray-50 p-4 text-sm text-gray-500 dark:bg-gray-800 dark:text-gray-400">No active vehicles for this route right now</p>}
+        {!routeVehicles.length && <p className="rounded-xl bg-gray-50 p-4 text-sm text-gray-500 dark:bg-gray-800 dark:text-gray-400">No live vehicle tracking for this route; check stop ETAs for upcoming buses.</p>}
       </section>
     </div>
   );
