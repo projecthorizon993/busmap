@@ -590,6 +590,11 @@ const App = () => {
   const provider = getProvider();
   console.log('[App] provider.id=', provider.id, 'isApiKeyConfigured=', provider.isApiKeyConfigured());
 
+  const rushHour = useMemo(() => {
+    const hour = Number(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh', hour: 'numeric', hour12: false }));
+    return (hour >= 6 && hour < 8) || (hour >= 16 && hour < 19);
+  }, []);
+
   // Clear stale route-pattern entries from localStorage on load so they don't
   // shadow fresh cache-storage entries (e.g. a retired route's empty cache).
   useEffect(() => {
@@ -1255,6 +1260,11 @@ const App = () => {
 
   return (
     <div className="h-full w-full relative bg-gray-100 dark:bg-gray-950">
+      {rushHour && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-amber-100 dark:bg-amber-900/90 border-b border-amber-200 dark:border-amber-700 px-3 py-1.5 text-center text-xs text-amber-800 dark:text-amber-100">
+          Rush hour (6–8 AM, 4–7 PM): live vehicle ETA may be unpredictable.
+        </div>
+      )}
       {/* ETA proximity notification (bus arriving within ~100s of a nearby stop) */}
       {etaNotification && (
         <EtaNotification
