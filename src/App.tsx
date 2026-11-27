@@ -432,7 +432,10 @@ const App = () => {
   const stableCoords = userCoords ? lastStableCoords : null;
   // Fall back to a default Hanoi center so VinBus stations/ETA can load
   // even when the browser geolocation is unavailable or denied.
-  const vinbusCoords = stableCoords ?? { lat: 21.0285, lng: 105.8542 };
+  const vinbusCoords = useMemo(
+    () => stableCoords ?? { lat: 21.0285, lng: 105.8542 },
+    [stableCoords],
+  );
 
   const { data: allStops, isLoading: stopsLoading } = useStops();
 
@@ -588,7 +591,6 @@ const App = () => {
     vehicleMode: 'bus'; routes: StopRoute[]; code: string;
   }>>([]);
   const provider = getProvider();
-  console.log('[App] provider.id=', provider.id, 'isApiKeyConfigured=', provider.isApiKeyConfigured());
 
   const rushHour = useMemo(() => {
     const hour = Number(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh', hour: 'numeric', hour12: false }));
