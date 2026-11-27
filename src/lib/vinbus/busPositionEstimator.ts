@@ -79,7 +79,10 @@ export function parseBusETAList(
     const routeName = String(it.routeName ?? '');
     const color = String(it.color ?? '#3b82f6');
     const speedMps = Number(it.speed ?? -1);
-    const etaSeconds = parseETASeconds(String(it.status ?? ''));
+    const apiTime = Number(it.time ?? NaN);
+    const etaSeconds = Number.isFinite(apiTime) && apiTime >= 0
+      ? apiTime
+      : parseETASeconds(String(it.status ?? ''));
     const statusText = String(it.status ?? '');
     const infoText = String(it.info ?? '');
     const isLiveData = speedMps >= 0;
