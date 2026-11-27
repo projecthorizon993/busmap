@@ -1,5 +1,5 @@
 import type {
-  Route, RoutePattern, Stop, StopRoute, TransportMode, VehicleTrip,
+  Route, RoutePattern, Stop, StopDeparture, StopRoute, TransportMode, VehicleTrip,
 } from '@/types';
 import {
   LiveVehicleAtStation, ParsedVehicle, StopTimetableResult,
@@ -284,9 +284,46 @@ export const vietnamProvider: TransitProvider = {
     return patterns;
   },
 
-  fetchStopTimetable: async (_stopId: string): Promise<StopTimetableResult> => {
-    // vbservice-api.vinbus.vn exposes no public timetable endpoint.
-    return { departures: [], directions: {} };
+  fetchStopTimetable: async (stopId: string): Promise<StopTimetableResult> => {
+    try {
+      const payload = await getJson(`${PROXY_BASE}/api/eta?regionCode=${encodeURIComponent(REGION_CODE)}&stationId=${encodeURIComponent(stopId)}&group=1&isInternalStation=0`);
+      const routes = Array.isArray(payload) ? payload : [];
+      const nowSec = Math.floor(Date.now() / 1000);
+      const midnight = nowSec - (nowSec % 86400);
+      const departures: StopDeparture[] = [];
+      for (const routeItem of routes) {
+        if (typeof routeItem !== 'object' || routeItem === null) continue;
+        const ri = routeItem as Record<string, unknown>;
+        const routeId = ri.routeId ?? ri.id;
+        const routeNo = String(ri.routeNo ?? '');
+        const routeName = String(ri.routeName ?? routeNo);
+        const buses = Array.isArray(ri.list) ? ri.list : [];
+        for (const bus of buses) {
+          if (typeof bus !== 'object' || bus === null) continue;
+          const b = bus as Record<string, unknown>;
+          const eta = Number(b.time ?? NaN);
+          if (!Number.isFinite(eta) || eta < 0) continue;
+          departures.push({
+            scheduledDeparture: (nowSec - midnight) + eta,
+            realtimeDeparture: (nowSec - midnight) + eta,
+            departureDelay: 0,
+            realtime: true,
+            realtimeState: 'UPDATED',
+            headsign: routeName,
+            serviceDay: midnight,
+            routeGtfsId: `${ROUTE_ID_PREFIX}${routeId}`,
+            routeShortName: routeNo,
+            routeLongName: routeName,
+            routeMode: 'bus',
+            directionId: Number(b.direction ?? 0),
+            tripStartTime: '',
+          });
+        }
+      }
+      return { departures, directions: {} };
+    } catch {
+      return { departures: [], directions: {} };
+    }
   },
 
   fetchVehicleTrip: async (
