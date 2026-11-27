@@ -430,6 +430,9 @@ const App = () => {
     setLastStableCoords(userCoords);
   }
   const stableCoords = userCoords ? lastStableCoords : null;
+  // Fall back to a default Hanoi center so VinBus stations/ETA can load
+  // even when the browser geolocation is unavailable or denied.
+  const vinbusCoords = stableCoords ?? { lat: 21.0285, lng: 105.8542 };
 
   const { data: allStops, isLoading: stopsLoading } = useStops();
 
@@ -606,14 +609,14 @@ const App = () => {
   useEffect(() => {
     // Only import stations when the vietnam (VinBus) provider is active
     // and a proxy base URL is configured (direct browser->VinBus is blocked by CORS).
-    if (provider.id !== 'vietnam' || !stableCoords || !VIETNAM_PROXY_BASE) return;
+    if (provider.id !== 'vietnam' || !vinbusCoords || !VIETNAM_PROXY_BASE) return;
 
     const fetchStations = async () => {
       try {
         // Default to Hanoi region; detectedRegion overrides if available
-        const regionCode = detectedRegion || 'hn';
+        const regionCode = 'hn';
         const stations = await stationService.getNearbyStations(
-          stableCoords.lat, stableCoords.lng, 1500,
+          vinbusCoords.lat, vinbusCoords.lng, 1500,
           regionCode as RegionCode,
         );
         console.log('[VinBus] Fetched stations:', stations.length, 'for region:', regionCode);
@@ -632,9 +635,9 @@ const App = () => {
     };
 
     void fetchStations();
-  }, [provider.id, stableCoords, stationService, detectedRegion, VIETNAM_PROXY_BASE]);
+  }, [provider.id, vinbusCoords, stationService, detectedRegion, VIETNAM_PROXY_BASE]);
 
-  if (provider.id === 'vietnam' && stableCoords && vinbusStations.length === 0 && VIETNAM_PROXY_BASE) {
+  if (provider.id === 'vietnam' && vinbusCoords && vinbusStations.length === 0 && VIETNAM_PROXY_BASE) {
     console.log('[VinBus] No stations fetched yet - checking API...');
   }
 
@@ -644,7 +647,7 @@ const App = () => {
 
   useEffect(() => {
     // Only poll for estimated buses when using vietnam provider and we have stations
-    if (provider.id !== 'vietnam' || vinbusStations.length === 0 || !stableCoords) {
+    if (provider.id !== 'vietnam' || vinbusStations.length === 0 || !vinbusCoords) {
       if (etaPollRef.current) {
         clearInterval(etaPollRef.current);
         etaPollRef.current = null;
@@ -683,7 +686,7 @@ const App = () => {
       if (etaPollRef.current) clearInterval(etaPollRef.current);
       etaPollRef.current = null;
     };
-  }, [provider.id, stableCoords, vinbusStations, stationService]);
+  }, [provider.id, vinbusCoords, vinbusStations, stationService]);
 
   // Compute nearest approaching bus for persistent wait-time display
   const nearestEstimatedBus = useMemo(() => {
