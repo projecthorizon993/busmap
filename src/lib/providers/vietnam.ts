@@ -252,6 +252,18 @@ export const vietnamProvider: TransitProvider = {
         for (const s of stations) {
           if (typeof s !== 'object' || s === null) continue;
           const st = s as Record<string, unknown>;
+          const pathPoints = typeof st.pathPoints === 'string' ? st.pathPoints.trim() : '';
+          if (pathPoints) {
+            for (const pair of pathPoints.split(/\s+/)) {
+              const [lonStr, latStr] = pair.split(',');
+              const lon = Number(lonStr);
+              const lat = Number(latStr);
+              if (Number.isFinite(lat) && Number.isFinite(lon)) {
+                geometry.push({ lat, lon });
+              }
+            }
+            continue;
+          }
           const lat = typeof st.lat === 'number' ? st.lat : Number(st.lat ?? st.Lat);
           const lng = typeof st.lng === 'number' ? st.lng : Number(st.lng ?? st.Lng);
           if (Number.isFinite(lat) && Number.isFinite(lng)) {
