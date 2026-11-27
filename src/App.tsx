@@ -455,7 +455,10 @@ const App = () => {
   }, [allStops, stableCoords]);
 
   const nearbyStopsWithinRadius = useMemo<StopWithDistance[]>(() => {
-    if (!stableCoords) return [];
+    if (!stableCoords) {
+      // Show all stops when location is unavailable (e.g. Vietnam provider).
+      return stopsForSearch.map((stop) => ({ ...stop, distance: 0 })) as StopWithDistance[];
+    }
     return stopsForSearch
       .filter(hasStopDistance)
       .filter((stop) => stop.distance <= nearbyRadius);
