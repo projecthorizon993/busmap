@@ -5,7 +5,6 @@ import { useLocationStore, useVehicleStore, useSubscriptionStore, useSettingsSto
 import { extrapolate, interpolateVehicle, pruneInterpolationStates } from '@/lib/interpolation';
 import { getVehicleTerminusLabel, resolveRouteColor } from '@/lib';
 import type { TrackedVehicle, RoutePattern, Route, Stop } from '@/types';
-import { TRANSPORT_COLORS } from '@/types';
 import { prefixRouteId } from '@/lib/routeId';
 import type { FeatureCollection, LineString, Polygon, Point, Feature } from 'geojson';
 import { TOP_BAR_HEIGHT, getVehicleTiming, getMarkerSizeScale } from '@/constants';
@@ -1105,7 +1104,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, nearbyRadius, selectedVehic
             isSelected,
             opacity,
             isDimmed,
-            color: TRANSPORT_COLORS[stop.vehicleMode] ?? TRANSPORT_COLORS.bus,
+            color: '#22c55e',
           },
           geometry: {
             type: 'Point' as const,
