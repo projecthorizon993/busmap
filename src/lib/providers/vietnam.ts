@@ -199,8 +199,8 @@ export const vietnamProvider: TransitProvider = {
   normalizeMode: (): TransportMode => 'bus',
   fetchAllRoutes: async (): Promise<Route[]> => {
     try {
-      console.log('[Vietnam] fetchAllRoutes: loading prefetched routes');
-      const res = await fetch('/data/vn-routes.json');
+      console.log('[Vietnam] fetchAllRoutes: loading worker routes');
+      const res = await fetch(`${PROXY_BASE}/api/routes`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const routes = (await res.json()) as Route[];
       console.log('[Vietnam] Route list loaded', routes.length, 'routes');
@@ -213,8 +213,8 @@ export const vietnamProvider: TransitProvider = {
 
   fetchAllStops: async (): Promise<Stop[]> => {
     try {
-      console.log('[Vietnam] fetchAllStops: loading prefetched stops');
-      const res = await fetch('/data/vn-stops.json');
+      console.log('[Vietnam] fetchAllStops: loading worker stops');
+      const res = await fetch(`${PROXY_BASE}/api/stops`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const stops = (await res.json()) as Stop[];
       console.log('[Vietnam] Stops loaded', stops.length, 'stops');

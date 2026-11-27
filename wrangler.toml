@@ -5,6 +5,7 @@ compatibility_date = "2024-01-01"
 [vars]
 VINBUS_API_BASE = "https://vbservice-api.vinbus.vn"
 VITE_VIETNAM_DECRYPT_KEY = "ViNbus2o21#K3(y)th3BUSNiElectric"
+PAGES_ORIGIN = "https://master.busmap-a2b.pages.dev"
 
 # Cloudflare Pages build configuration
 # Use: wrangler pages deploy dist --project-name=busmap

@@ -133,6 +133,32 @@ export default {
     const path = url.pathname;
     const region = url.searchParams.get('regionCode') || 'hn';
 
+    const origin = env.PAGES_ORIGIN || 'https://master.busmap-a2b.pages.dev';
+
+    if (path === '/api/routes') {
+      const cache = caches.default;
+      const cacheKey = new Request('https://busmap-cache/api/routes');
+      const cached = await cache.match(cacheKey);
+      if (cached) return cached;
+      const res = await fetch(`${origin}/data/vn-routes.json`);
+      const text = await res.text();
+      const response = new Response(text, { status: res.status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=86400', ...CORS_HEADERS } });
+      await cache.put(cacheKey, response.clone());
+      return response;
+    }
+
+    if (path === '/api/stops') {
+      const cache = caches.default;
+      const cacheKey = new Request('https://busmap-cache/api/stops');
+      const cached = await cache.match(cacheKey);
+      if (cached) return cached;
+      const res = await fetch(`${origin}/data/vn-stops.json`);
+      const text = await res.text();
+      const response = new Response(text, { status: res.status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=86400', ...CORS_HEADERS } });
+      await cache.put(cacheKey, response.clone());
+      return response;
+    }
+
     if (path === '/api/eta') {
       const stationId = url.searchParams.get('stationId');
       if (!stationId) {
