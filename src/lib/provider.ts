@@ -75,7 +75,7 @@ export const registerProvider = (provider: TransitProvider): void => {
 };
 
 export const getProvider = (id?: string): TransitProvider => {
-  const selected = id ?? import.meta.env?.VITE_TRANSIT_PROVIDER ?? 'vietnam';
+  const selected = id ?? import.meta.env?.VITE_TRANSIT_PROVIDER ?? 'hsl';
   const provider = providers.get(selected);
   if (!provider) {
     const available = Array.from(providers.keys()).join(', ');
