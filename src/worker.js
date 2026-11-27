@@ -68,7 +68,7 @@ async function getRoutes(region, env, ctx) {
   const res = new Response(JSON.stringify(routes), {
     headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=86400', ...CORS_HEADERS },
   });
-  ctx.waitUntil(cache.put(cacheKey, res.clone()));
+  await cache.put(cacheKey, res.clone());
   return routes;
 }
 
@@ -114,10 +114,12 @@ async function getStops(region, env, ctx) {
   const res = new Response(JSON.stringify(stops), {
     headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=86400', ...CORS_HEADERS },
   });
-  ctx.waitUntil(cache.put(cacheKey, res.clone()));
+  await cache.put(cacheKey, res.clone());
   return stops;
 }
 
+// Keep aggregation helpers but expose a batched endpoint to avoid
+// Cloudflare's 50-subrequest limit.
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -131,27 +133,7 @@ export default {
     const path = url.pathname;
     const region = url.searchParams.get('regionCode') || 'hn';
 
-    // Aggregated endpoints
-    if (path === '/api/routes') {
-      try {
-        const routes = await getRoutes(region, env, ctx);
-        // strip internal _routeId from response
-        const clean = routes.map(({ _routeId, ...r }) => r);
-        return new Response(JSON.stringify(clean), { headers: { 'Content-Type': 'application/json', ...CORS_HEADERS } });
-      } catch (e) {
-        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...CORS_HEADERS } });
-      }
-    }
-    if (path === '/api/stops') {
-      try {
-        const stops = await getStops(region, env, ctx);
-        return new Response(JSON.stringify(stops), { headers: { 'Content-Type': 'application/json', ...CORS_HEADERS } });
-      } catch (e) {
-        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...CORS_HEADERS } });
-      }
-    }
     if (path === '/api/eta') {
-      // proxy raw estimate endpoint
       const stationId = url.searchParams.get('stationId');
       if (!stationId) {
         return new Response(JSON.stringify({ error: 'stationId required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...CORS_HEADERS } });
