@@ -71,7 +71,6 @@ const timbusUrl = (path: string): string => {
   return `https://vbservice-api.vinbus.vn${path}`;
 };
 
-const ROUTE_LIST_URL = timbusUrl('/client/route/list');
 const ROUTE_DETAIL_URL = timbusUrl('/client/route/detail');
 // VinBus endpoints (GET, AES-256-CBC encrypted hex responses)
 // /client/route/list?regionCode=hn
@@ -116,7 +115,7 @@ const getJson = async (url: string, retries = 4): Promise<unknown> => {
 
     lastError = new Error(`HTTP ${response.status}: ${response.statusText}`);
     if (response.status === 429 && attempt < retries) {
-      await sleep(750 * (attempt + 1) + Math.floor(Math.random() * 250));
+      await sleep(2000 * (attempt + 1) + Math.floor(Math.random() * 500));
       continue;
     }
     throw lastError;
@@ -235,19 +234,6 @@ const normalizeVietnamRoute = (r: Record<string, unknown>): Route => {
   };
 };
 
-const normalizeVietnamStop = (s: {
-  stationId: string | number; stationName: string; lat: number; lng: number;
-}): Stop => {
-  return {
-    gtfsId: String(s.stationId),
-    name: s.stationName,
-    code: String(s.stationId),
-    lat: s.lat,
-    lon: s.lng,
-    vehicleMode: 'bus' as TransportMode,
-    routes: [],
-  };
-};
 
 export const vietnamProvider: TransitProvider = {
   id: 'vietnam',
@@ -261,40 +247,11 @@ export const vietnamProvider: TransitProvider = {
   isApiKeyConfigured: () => true,
   normalizeMode: (): TransportMode => 'bus',
   fetchAllRoutes: async (): Promise<Route[]> => {
-    console.log('[Vietnam] fetchAllRoutes: PROXY_BASE=', PROXY_BASE);
-    if (!PROXY_BASE) return [];
-
     try {
-      const url = `${ROUTE_LIST_URL}?regionCode=${encodeURIComponent(REGION_CODE)}`;
-      console.log('[Vietnam] fetchAllRoutes: fetching', url);
-      const payload = await getJson(url);
-      console.log('[Vietnam] fetchAllRoutes: got payload type=', typeof payload, Array.isArray(payload) ? 'array' : payload && typeof payload === 'object' ? 'object' : 'other');
-
-      // Proxy returns decrypted JSON directly. Handle all response shapes:
-      // 1) Direct array: [...]
-      // 2) Object with .Data: { Data: [...] }
-      // 3) Object with .dt: { dt: { Data: [...] } }
-      let data: unknown[] | null = null;
-      if (Array.isArray(payload)) {
-        data = payload;
-      } else if (payload && typeof payload === 'object') {
-        const p = payload as Record<string, unknown>;
-        data = (p.Data as unknown[] | null) ??
-          ((p.dt as Record<string, unknown> | null)?.Data as unknown[] | null) ??
-          null;
-      }
-
-      if (!Array.isArray(data)) {
-        console.log('[Vietnam] route list: Data is not array, payload keys:', payload && typeof payload === 'object' ? Object.keys(payload as Record<string, unknown>) : 'not object');
-        return [];
-      }
-
-      const routes: Route[] = [];
-      for (const r of data) {
-        if (typeof r !== 'object' || r === null) continue;
-        routes.push(normalizeVietnamRoute(r as Record<string, unknown>));
-      }
-
+      console.log('[Vietnam] fetchAllRoutes: loading prefetched routes');
+      const res = await fetch('/data/vn-routes.json');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const routes = (await res.json()) as Route[];
       console.log('[Vietnam] Route list loaded', routes.length, 'routes');
       return routes.sort((a: Route, b: Route) => a.shortName.localeCompare(b.shortName));
     } catch (err) {
@@ -304,74 +261,17 @@ export const vietnamProvider: TransitProvider = {
   },
 
   fetchAllStops: async (): Promise<Stop[]> => {
-    if (!PROXY_BASE) return [];
-
-    // vbservice-api.vinbus.vn has no standalone "all stops" endpoint.
-    // Stops are discovered per-route via route detail, so collect stations across all routes.
-    const routes = await vietnamProvider.fetchAllRoutes();
-    if (routes.length === 0) return [];
-
-    const stationsById = new Map<string, {
-      stationId: string | number; stationName: string; lat: number; lng: number;
-      routes: StopRoute[];
-    }>();
-
-    for (const route of routes) {
-      try {
-        const d = await fetchRouteDetailRaw(route.gtfsId);
-        if (!d || typeof d !== 'object') {
-          await sleep(50);
-          continue;
-        }
-
-        const detail = d as Record<string, unknown>;
-        const stations = detail.stations;
-        if (!Array.isArray(stations)) {
-          await sleep(50);
-          continue;
-        }
-
-        for (const s of stations) {
-          if (typeof s !== 'object' || s === null) continue;
-          const st = s as Record<string, unknown>;
-          const stationId = (st.stationId ?? st.station_id ?? st.id ?? '') as string | number;
-          if (!stationId) continue;
-
-          const geo = parseGeoString(st.lat ?? st.Lat ?? st.latitude) &&
-            parseGeoString(st.lng ?? st.Lng ?? st.lon ?? st.longitude);
-          const lat = typeof st.lat === 'number' ? st.lat : (geo?.lat ?? 0);
-          const lng = typeof st.lng === 'number' ? st.lng : (geo?.lon ?? 0);
-
-          const routeEntry: StopRoute = {
-            gtfsId: route.gtfsId,
-            shortName: route.shortName,
-            longName: route.longName,
-            mode: 'bus' as TransportMode,
-          };
-
-          const key = String(stationId);
-          const existing = stationsById.get(key);
-          if (existing) {
-            if (!existing.routes.some((r) => r.gtfsId === route.gtfsId)) {
-              existing.routes.push(routeEntry);
-            }
-          } else {
-            stationsById.set(key, {
-              stationId,
-              stationName: String(st.stationName ?? st.station_name ?? st.name ?? key),
-              lat,
-              lng,
-              routes: [routeEntry],
-            });
-          }
-        }
-      } catch {
-        // Skip individual route detail failures
-      }
-      await sleep(120);
+    try {
+      console.log('[Vietnam] fetchAllStops: loading prefetched stops');
+      const res = await fetch('/data/vn-stops.json');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const stops = (await res.json()) as Stop[];
+      console.log('[Vietnam] Stops loaded', stops.length, 'stops');
+      return stops;
+    } catch (err) {
+      console.log('[Vietnam] Stops fetch failed:', err);
+      return [];
     }
-
-    return Array.from(stationsById.values()).map((s) => normalizeVietnamStop(s));
   },
 
   fetchRoutesByIds: async (routeIds: string[]): Promise<Route[]> => {
