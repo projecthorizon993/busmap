@@ -71,57 +71,67 @@ export function parseBusETAList(
 
   for (const item of rawList) {
     if (typeof item !== 'object' || item === null) continue;
-    const it = item as Record<string, unknown>;
+    const routeItem = item as Record<string, unknown>;
 
-    const busId = String(it.busId ?? it.vehicleId ?? it.id ?? '');
-    const vehicleNumber = String(it.vehicleNumber ?? it.busId ?? '');
-    const routeNo = String(it.routeNo ?? '');
-    const routeName = String(it.routeName ?? '');
-    const color = String(it.color ?? '#3b82f6');
-    const speedMps = Number(it.speed ?? -1);
-    const apiTime = Number(it.time ?? NaN);
-    const etaSeconds = Number.isFinite(apiTime) && apiTime >= 0
-      ? apiTime
-      : parseETASeconds(String(it.status ?? ''));
-    const statusText = String(it.status ?? '');
-    const infoText = String(it.info ?? '');
-    const isLiveData = speedMps >= 0;
+    const routeNo = String(routeItem.routeNo ?? '');
+    const routeName = String(routeItem.routeName ?? '');
+    const color = String(routeItem.color ?? '#3b82f6');
+    const routeStatus = String(routeItem.status ?? '');
+    const routeInfo = String(routeItem.info ?? '');
 
-    // If no live GPS data, place bus at the stop location
-    // If we have route geometry, place at start of route (beginning of journey)
-    let estimatedLat = targetStopLat;
-    let estimatedLng = targetStopLng;
-    let progressPercent = 0;
+    // The API returns one object per route, with a nested `list` of buses.
+    // Flatten that list so each bus becomes its own estimate.
+    const busList = Array.isArray(routeItem.list) ? routeItem.list : [routeItem];
 
-    if (routeGeometry && Array.isArray(routeGeometry) && routeGeometry.length > 0) {
-      const firstPoint = routeGeometry[0] as Record<string, unknown>;
-      if (firstPoint) {
-        estimatedLat = Number(firstPoint.lat ?? targetStopLat);
-        estimatedLng = Number(firstPoint.lon ?? targetStopLng);
-        progressPercent = 0; // At start of route
+    for (const bus of busList) {
+      if (typeof bus !== 'object' || bus === null) continue;
+      const it = bus as Record<string, unknown>;
+
+      const busId = String(it.busId ?? it.vehicleId ?? it.id ?? '');
+      const vehicleNumber = String(it.vehicleNumber ?? it.busId ?? '');
+      const speedMps = Number(it.speed ?? -1);
+      const apiTime = Number(it.time ?? NaN);
+      const etaSeconds = Number.isFinite(apiTime) && apiTime >= 0
+        ? apiTime
+        : parseETASeconds(String(it.status ?? routeStatus));
+      const statusText = String(it.status ?? routeStatus);
+      const infoText = String(it.info ?? routeInfo);
+      const isLiveData = speedMps >= 0;
+
+      let estimatedLat = targetStopLat;
+      let estimatedLng = targetStopLng;
+      let progressPercent = 0;
+
+      if (routeGeometry && Array.isArray(routeGeometry) && routeGeometry.length > 0) {
+        const firstPoint = routeGeometry[0] as Record<string, unknown>;
+        if (firstPoint) {
+          estimatedLat = Number(firstPoint.lat ?? targetStopLat);
+          estimatedLng = Number(firstPoint.lon ?? targetStopLng);
+          progressPercent = 0;
+        }
       }
-    }
 
-    estimates.push({
-      busId,
-      vehicleNumber,
-      routeNo,
-      routeName,
-      color,
-      distanceToStopMeters: 0,
-      etaSeconds,
-      speedMps,
-      stopLat: targetStopLat,
-      stopLng: targetStopLng,
-      stopName: targetStopName,
-      estimatedLat,
-      estimatedLng,
-      progressPercent,
-      hasArrived: etaSeconds <= 0,
-      isLiveData,
-      statusText,
-      infoText,
-    });
+      estimates.push({
+        busId,
+        vehicleNumber,
+        routeNo: routeNo || String(it.routeNo ?? ''),
+        routeName,
+        color,
+        distanceToStopMeters: Number(it.distance ?? 0),
+        etaSeconds,
+        speedMps,
+        stopLat: targetStopLat,
+        stopLng: targetStopLng,
+        stopName: targetStopName,
+        estimatedLat,
+        estimatedLng,
+        progressPercent,
+        hasArrived: etaSeconds <= 0,
+        isLiveData,
+        statusText,
+        infoText,
+      });
+    }
   }
 
   return estimates;
