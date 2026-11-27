@@ -223,7 +223,7 @@ const NearbyStopsComponent = ({ stops, isLoading, onStopClick }: NearbyStopsProp
     );
   }
 
-  if (subscribedStops.length === 0 && (!showStops || stops.length === 0)) {
+  if (subscribedStops.length === 0 && stops.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-8 text-center">
         <div className="w-16 h-16 mb-4 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
